@@ -41,6 +41,31 @@ def create_app():
             rendered template (str): The rendered HTML template.
         """
         return render_template("index.html")
+    
+    @app.route("/upload")#, methods = ["POST"])
+    def upload():
+        """
+        Route for the upload page.
+        Returns:
+            rendered template (str): The rendered HTML template.
+        """
+        # if request.method == "POST":
+        #     #take in image here and get to client
+        #     pass
+        return render_template("upload.html")
+    
+    @app.route("/capture")#, methods = ["POST"])
+    def capture():
+        """
+        Route for the capture page.
+        Returns:
+            rendered template (str): The rendered HTML template.
+        """
+        # if request.method == "POST":
+        #     #take in image here and get to client
+        #     pass
+        return render_template("capture.html")
+    
 
     @app.errorhandler(Exception)
     def handle_error(e):
