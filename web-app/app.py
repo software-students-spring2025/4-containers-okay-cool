@@ -1,10 +1,12 @@
+"""This is a Flask Web App"""
+
 import os
-from flask import Flask, render_template, request, redirect, url_for
+import io
+import logging
+from flask import Flask, render_template, request #, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
 from PIL import Image
-import io
-import logging
 
 load_dotenv()  # load environment variables from .env file
 
@@ -21,7 +23,7 @@ def create_app():
 
     cxn = pymongo.MongoClient(os.getenv("MONGO_URI"))
     db = cxn[os.getenv("MONGO_DBNAME")]
-    
+
     try:
         cxn.admin.command("ping")
         print(" *", "Connected to MongoDB!")
@@ -31,7 +33,7 @@ def create_app():
     # Set up logging in Docker container's output
     logging.basicConfig(level=logging.DEBUG)
 
-    # Drop all collections to prevent duplicated data getting 
+    # Drop all collections to prevent duplicated data getting
     # inserted into the database whenever the app is restarted
     collections = db.list_collection_names()
     for collection in collections:
@@ -70,7 +72,8 @@ def create_app():
     @app.route("/final_image", methods = ["POST"])
     def final_image():
         """
-        Route accepting a photo that was either uploaded or captured and giving it to machine learning client through MongoDB.
+        Route accepting a photo that was either uploaded or captured 
+        and giving it to machine learning client through MongoDB.
         Renders final page with output from machine learning client
         Returns:
             rendered template (str): The rendered HTML template.
@@ -91,9 +94,7 @@ def create_app():
         app.logger.debug('adding image to collection: %s', image_id)
 
         # TODO: then fetch image and id and pass to ml client
-
         # TODO: add new image to separate collection with id of original 
-
         # TODO: pass new image to output page to display
         return render_template("output.html") #, new_image)
     
