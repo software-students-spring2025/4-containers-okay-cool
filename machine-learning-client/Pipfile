@@ -6,8 +6,13 @@ name = "pypi"
 [packages]
 pylint = "*"
 black = "*"
+matplotlib = "*"
+mtcnn = "*"
+tensorflow = "*"
+opencv-python = "*"
+tomli = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.10"
+python_version = "3.11"
