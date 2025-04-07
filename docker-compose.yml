@@ -27,9 +27,27 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+  
+  face-redaction-client:
+    build: ./machine-learning-client
+    container_name: face_redaction_client
+    environment:
+      - MONGO_DBNAME=okaycooldb
+      - MONGO_URI=mongodb://admin:secret@mongodb:27017
+      - INPUT_DIR=images/input
+      - OUTPUT_DIR=images/output
+      - ARCHIVE_DIR=images/archive
+      - POLL_INTERVAL=5
+    env_file:
+      - ./machine-learning-client/.env
+    volumes:
+      - ./shared-images:/app/images
+    depends_on:
+      - mongodb
 
 volumes:
   mongo-data:
+  shared-images:
 
 networks:
   app-network:
