@@ -5,9 +5,10 @@ This service automatically detects and redacts faces in images, storing the dete
 ## Features
 
 - Face detection using MTCNN (Multi-task Cascaded Convolutional Networks)
+- Custom redaction options: black rectangles (default) or custom image overlays
 - Automatic monitoring of input directory for new images
 - Processing and redaction of faces in images
-- Storage of detection results in MongoDB
+- Storage of detection results in MongoDB (optional for local testing)
 - Containerized for easy deployment
 
 ## Directory Structure
@@ -26,9 +27,17 @@ This service automatically detects and redacts faces in images, storing the dete
 └── test_client.py # Unit tests
 ```
 
-## Usage
+## Custom Face Redaction
 
-### Configuration
+By default, the client redacts faces by drawing black rectangles over them. However, you can use any image (like a mask, emoji, or other overlay) to redact faces by setting the `REDACTION_IMAGE` environment variable in the `.env` file:
+
+```
+REDACTION_IMAGE=images/redaction/fawkes.png
+```
+
+The redaction image should ideally have an alpha channel (transparency) for best results. The image will be automatically resized to fit each detected face.
+
+## Configuration
 
 The client can be configured using environment variables:
 
@@ -38,71 +47,69 @@ The client can be configured using environment variables:
 - `OUTPUT_DIR`: Directory to save redacted images (default: `images/output`)
 - `ARCHIVE_DIR`: Directory to move processed images (default: `images/archive`)
 - `POLL_INTERVAL`: Seconds between checking for new images (default: `5`)
+- `REDACTION_IMAGE`: Path to image used for redaction (if not set, black rectangles will be used)
 
-### Running with Docker
+## Local Development and Testing
 
-The client is designed to be run as a Docker container. You can use the following commands:
+For local development and testing, you can run the client without MongoDB. The client will attempt to connect to MongoDB but will still process and redact images even if the connection fails.
+
+To run the client locally:
 
 ```bash
-# Build the container
-docker build -t face-redaction-client .
+# Install dependencies
+pipenv install
 
-# Run the container
-docker run -d \
-  --name face_redaction_client \
-  -e MONGO_URI=mongodb://admin:secret@mongodb:27017 \
-  -e MONGO_DBNAME=okaycooldb \
-  -v ./images:/app/images \
-  face-redaction-client
+# Activate the virtual environment
+pipenv shell
+
+# Run the client
+python client.py
 ```
 
-### Running with Docker Compose
+When running locally without MongoDB, you may see connection errors in the logs, but face detection and redaction will still work properly.
 
-The preferred way to run the client is with Docker Compose, which will also start the MongoDB database:
+## Example Usage
+
+1. Place an image with faces in the `images/input` directory (e.g., `protest.jpg`)
+2. If using a custom redaction image, place it in an accessible location and update the `.env` file
+3. Run the client
+4. Redacted images will appear in the `images/output` directory (e.g., `protest_redacted.jpg`)
+5. Original images will be moved to `images/archive` directory
+
+## Docker Deployment
+
+The client is designed to be run as a Docker container. When deployed with Docker Compose, it will connect to MongoDB automatically:
 
 ```bash
+# Build and run with docker-compose
 docker-compose up -d
 ```
 
-### Testing
+## Testing
 
 Run the unit tests using pytest:
 
 ```bash
-pytest test_client.py -v
+pipenv run pytest test_client.py -v
 ```
 
 Check test coverage:
 
 ```bash
-pytest --cov=client test_client.py
+pipenv run pytest --cov=client test_client.py
 ```
 
 ## Data Storage
 
-The client stores the following data in MongoDB:
+When connected to MongoDB, the client stores the following data for each processed image:
 
 ```json
 {
-  "filename": "example.jpg",
+  "filename": "protest.jpg",
   "timestamp": "2023-04-07T12:34:56.789Z",
   "num_faces": 2,
   "confidence_scores": [0.998, 0.975],
-  "processing_time": 1.25
+  "processing_time": 1.25,
+  "redaction_method": "image"  // or "rectangle"
 }
-```
-
-## Development
-
-For development, you can install the dependencies using pipenv:
-
-```bash
-pipenv install
-pipenv shell
-```
-
-And run the client directly:
-
-```bash
-python client.py
 ``` 

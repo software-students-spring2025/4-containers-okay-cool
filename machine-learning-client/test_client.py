@@ -36,6 +36,18 @@ def test_image():
 
 
 @pytest.fixture
+def test_redaction_image():
+    """Create a test redaction image."""
+    # Create a simple test image (50x50 red square with alpha channel)
+    img = np.zeros((50, 50, 4), dtype=np.uint8)
+    img[:, :, 0] = 0    # B
+    img[:, :, 1] = 0    # G
+    img[:, :, 2] = 255  # R
+    img[:, :, 3] = 128  # Alpha (semi-transparent)
+    return img
+
+
+@pytest.fixture
 def temp_directories():
     """Create temporary directories for testing."""
     temp_dir = tempfile.mkdtemp()
@@ -61,12 +73,23 @@ def temp_directories():
 
 def test_init(mock_mongo_client):
     """Test initialization of FaceRedactionClient."""
+    # Test without redaction image
     client = FaceRedactionClient("mongodb://test", "test_db")
     
     assert client.detector is not None
     mock_mongo_client.assert_called_once_with("mongodb://test")
     assert client.db == mock_mongo_client.return_value.__getitem__.return_value
     assert client.collection == client.db.face_detection_results
+    assert client.redaction_image is None
+    assert client.redaction_method == "rectangle"
+    
+    # Reset mock
+    mock_mongo_client.reset_mock()
+    
+    # Test with invalid redaction image
+    client = FaceRedactionClient("mongodb://test", "test_db", "nonexistent.png")
+    assert client.redaction_image is None
+    assert client.redaction_method == "rectangle"
 
 
 def test_detect_faces():
@@ -92,8 +115,8 @@ def test_detect_faces():
         mock_detector.detect_faces.assert_called_once()
 
 
-def test_redact_faces(test_image):
-    """Test face redaction."""
+def test_redact_faces_rectangle(test_image):
+    """Test face redaction with rectangle method."""
     client = FaceRedactionClient("mongodb://test", "test_db")
     
     # Create test faces
@@ -112,6 +135,30 @@ def test_redact_faces(test_image):
     assert not np.array_equal(test_image, redacted_img)
 
 
+def test_redact_faces_image(test_image, test_redaction_image):
+    """Test face redaction with image method."""
+    with patch("cv2.imread") as mock_imread:
+        mock_imread.return_value = test_redaction_image
+        
+        client = FaceRedactionClient("mongodb://test", "test_db", "fake_path.png")
+        client.redaction_image = test_redaction_image
+        client.redaction_method = "image"
+        
+        # Create test faces
+        faces = [
+            {"box": [10, 10, 30, 30], "confidence": 0.99},
+        ]
+        
+        # Redact faces
+        redacted_img, num_faces = client.redact_faces(test_image, faces)
+        
+        # Check that the number of faces is correct
+        assert num_faces == 1
+        
+        # Check that the image was modified (not the same as the original)
+        assert not np.array_equal(test_image, redacted_img)
+
+
 def test_store_result(mock_mongo_client):
     """Test storing results in MongoDB."""
     client = FaceRedactionClient("mongodb://test", "test_db")
@@ -128,6 +175,7 @@ def test_store_result(mock_mongo_client):
     assert call_args["num_faces"] == 2
     assert call_args["confidence_scores"] == [0.99, 0.95]
     assert call_args["processing_time"] == 0.5
+    assert call_args["redaction_method"] == "rectangle"
 
 
 @patch("client.cv2.imread")

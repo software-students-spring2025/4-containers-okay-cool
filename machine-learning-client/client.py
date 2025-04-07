@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 from mtcnn import MTCNN
 from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
 
 # Configure logging
@@ -39,6 +40,9 @@ OUTPUT_DIR = os.getenv("OUTPUT_DIR", "images/output")
 ARCHIVE_DIR = os.getenv("ARCHIVE_DIR", "images/archive")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))  # seconds
 
+# Redaction configuration
+REDACTION_IMAGE = os.getenv("REDACTION_IMAGE", None)  # Path to image used for redaction
+
 # Create directories if they don't exist
 Path(INPUT_DIR).mkdir(parents=True, exist_ok=True)
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
@@ -48,19 +52,50 @@ Path(ARCHIVE_DIR).mkdir(parents=True, exist_ok=True)
 class FaceRedactionClient:
     """Client for detecting and redacting faces in images."""
 
-    def __init__(self, mongo_uri: str, db_name: str) -> None:
+    def __init__(self, mongo_uri: str, db_name: str, redaction_image_path: Optional[str] = None) -> None:
         """
         Initialize the face redaction client.
 
         Args:
             mongo_uri: MongoDB connection URI
             db_name: MongoDB database name
+            redaction_image_path: Path to the image to use for redacting faces. If None, black rectangles are used.
         """
         self.detector = MTCNN()
-        self.mongo_client = MongoClient(mongo_uri)
-        self.db = self.mongo_client[db_name]
-        self.collection = self.db.face_detection_results
-        logger.info("Face Redaction Client initialized")
+        
+        # Attempt to connect to MongoDB but continue if it fails
+        self.mongo_client = None
+        self.db = None
+        self.collection = None
+        self.mongo_available = False
+        
+        try:
+            self.mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            # Test connection
+            self.mongo_client.admin.command('ping')
+            self.db = self.mongo_client[db_name]
+            self.collection = self.db.face_detection_results
+            self.mongo_available = True
+            logger.info("Successfully connected to MongoDB")
+        except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+            logger.warning("MongoDB connection failed: %s. Continuing without database functionality.", str(e))
+        
+        # Load redaction image if provided
+        self.redaction_image = None
+        self.redaction_method = "rectangle"
+        
+        if redaction_image_path:
+            try:
+                self.redaction_image = cv2.imread(redaction_image_path, cv2.IMREAD_UNCHANGED)
+                if self.redaction_image is None:
+                    logger.error("Failed to load redaction image: %s. Using rectangle redaction instead.", redaction_image_path)
+                else:
+                    logger.info("Loaded redaction image: %s", redaction_image_path)
+                    self.redaction_method = "image"
+            except Exception as e:
+                logger.error("Error loading redaction image: %s. Using rectangle redaction instead.", str(e))
+        
+        logger.info("Face Redaction Client initialized with method: %s", self.redaction_method)
 
     def detect_faces(self, img_rgb: np.ndarray) -> List[Dict[str, Any]]:
         """
@@ -75,11 +110,67 @@ class FaceRedactionClient:
         faces = self.detector.detect_faces(img_rgb)
         return faces
 
+    def apply_rectangle_redaction(
+        self, image: np.ndarray, face: Dict[str, Any], color: Tuple[int, int, int] = (0, 0, 0)
+    ) -> np.ndarray:
+        """
+        Redact a face by drawing a filled rectangle over it.
+        
+        Args:
+            image: Original image
+            face: Face detection result with bounding box
+            color: BGR color tuple for the redaction rectangle
+            
+        Returns:
+            Image with face redacted by rectangle
+        """
+        x, y, w, h = face["box"]
+        return cv2.rectangle(image, (x, y), (x + w, y + h), color, -1)  # -1 for fill
+
+    def apply_image_redaction(
+        self, image: np.ndarray, face: Dict[str, Any], redaction_img: np.ndarray
+    ) -> np.ndarray:
+        """
+        Redact a face by placing another image over it.
+        
+        Args:
+            image: Original image
+            face: Face detection result with bounding box
+            redaction_img: Image to place over the face
+            
+        Returns:
+            Image with face redacted by overlaying another image
+        """
+        x, y, w, h = face["box"]
+        result = image.copy()
+        
+        # Resize redaction image to match face size
+        overlay = cv2.resize(redaction_img, (w, h))
+        
+        # Handle both 3-channel (BGR) and 4-channel (BGRA) redaction images
+        if overlay.shape[2] == 4:  # With alpha channel
+            # Get the alpha channel
+            alpha = overlay[:, :, 3] / 255.0
+            
+            # Extract RGB channels from overlay
+            overlay_rgb = overlay[:, :, :3]
+            
+            # Apply alpha blending
+            for c in range(3):  # Apply for each color channel
+                result[y:y+h, x:x+w, c] = (
+                    overlay_rgb[:, :, c] * alpha + 
+                    result[y:y+h, x:x+w, c] * (1 - alpha)
+                ).astype(np.uint8)
+        else:  # Without alpha channel (BGR)
+            result[y:y+h, x:x+w] = overlay
+            
+        return result
+
     def redact_faces(
         self, img: np.ndarray, faces: List[Dict[str, Any]]
     ) -> Tuple[np.ndarray, int]:
         """
-        Redact faces in the image by drawing filled rectangles over them.
+        Redact faces in the image using the configured method.
 
         Args:
             img: Original image as numpy array
@@ -88,17 +179,22 @@ class FaceRedactionClient:
         Returns:
             Tuple of (redacted image, number of faces)
         """
-        img_with_patches = img.copy()
+        if not faces:
+            return img.copy(), 0
+            
+        img_with_redactions = img.copy()
         num_faces = len(faces)
 
         for face in faces:
-            x, y, w, h = face["box"]
-            # Draw filled rectangle to redact the face
-            img_with_patches = cv2.rectangle(
-                img_with_patches, (x, y), (x + w, y + h), (0, 0, 0), -1  # Black fill
-            )
+            # Apply the appropriate redaction method
+            if self.redaction_method == "image" and self.redaction_image is not None:
+                img_with_redactions = self.apply_image_redaction(
+                    img_with_redactions, face, self.redaction_image
+                )
+            else:  # Default to rectangle redaction
+                img_with_redactions = self.apply_rectangle_redaction(img_with_redactions, face)
 
-        return img_with_patches, num_faces
+        return img_with_redactions, num_faces
 
     def store_result(
         self,
@@ -116,15 +212,23 @@ class FaceRedactionClient:
             confidence_scores: Confidence scores for each detected face
             processing_time: Time taken to process the image in seconds
         """
-        result = {
-            "filename": filename,
-            "timestamp": datetime.datetime.now(),
-            "num_faces": num_faces,
-            "confidence_scores": confidence_scores,
-            "processing_time": processing_time,
-        }
-        self.collection.insert_one(result)
-        logger.info("Stored result for %s: %s faces detected", filename, num_faces)
+        if not self.mongo_available:
+            logger.info("MongoDB not available. Skipping data storage for %s", filename)
+            return
+            
+        try:
+            result = {
+                "filename": filename,
+                "timestamp": datetime.datetime.now(),
+                "num_faces": num_faces,
+                "confidence_scores": confidence_scores,
+                "processing_time": processing_time,
+                "redaction_method": self.redaction_method,
+            }
+            self.collection.insert_one(result)
+            logger.info("Stored result for %s: %s faces detected", filename, num_faces)
+        except Exception as e:
+            logger.error("Failed to store result in MongoDB: %s", str(e))
 
     def process_image(self, image_path: str) -> Optional[str]:
         """
@@ -172,7 +276,7 @@ class FaceRedactionClient:
             # Extract confidence scores
             confidence_scores = [face["confidence"] for face in faces] if faces else []
 
-            # Store result in MongoDB
+            # Store result in MongoDB (if available)
             self.store_result(base_name, num_faces, confidence_scores, processing_time)
 
             logger.info(
@@ -197,7 +301,8 @@ class FaceRedactionClient:
 
             # Process each image
             for image_path in image_files:
-                self.process_image(str(image_path))
+                if os.path.basename(image_path) != os.path.basename(REDACTION_IMAGE or ""):
+                    self.process_image(str(image_path))
 
             # Wait before checking for new images
             time.sleep(POLL_INTERVAL)
@@ -205,7 +310,7 @@ class FaceRedactionClient:
 
 def main() -> None:
     """Main entry point for the face redaction client."""
-    client = FaceRedactionClient(MONGO_URI, MONGO_DBNAME)
+    client = FaceRedactionClient(MONGO_URI, MONGO_DBNAME, REDACTION_IMAGE)
     client.run()
 
 
