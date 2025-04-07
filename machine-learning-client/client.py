@@ -56,8 +56,8 @@ for face in faces:
     )
 
 # Convert patched image to RGB for matplotlib
-img_with_patches_rgb = cv2.cvtColor(	# pylint: disable=E1101
-    img_with_patches, cv2.COLOR_BGR2RGB	# pylint: disable=E1101
+img_with_patches_rgb = cv2.cvtColor(  # pylint: disable=E1101
+    img_with_patches, cv2.COLOR_BGR2RGB  # pylint: disable=E1101
 )
 
 # Put patched image on plot
