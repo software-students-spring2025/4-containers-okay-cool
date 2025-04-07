@@ -1,17 +1,11 @@
-#!/usr/bin/env python3
-
-"""
-Example flask-based web application.
-See the README.md file for instructions how to set up and run the app in development mode.
-"""
-
 import os
-import datetime
 from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
+import pymongo
+from PIL import Image
+import io
 
 load_dotenv()  # load environment variables from .env file
-
 
 def create_app():
     """
@@ -42,29 +36,48 @@ def create_app():
         """
         return render_template("index.html")
     
-    @app.route("/upload")#, methods = ["POST"])
+    @app.route("/upload")
     def upload():
         """
         Route for the upload page.
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        # if request.method == "POST":
-        #     #take in image here and get to client
-        #     pass
+
         return render_template("upload.html")
     
-    @app.route("/capture")#, methods = ["POST"])
+    @app.route("/capture")
     def capture():
         """
         Route for the capture page.
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        # if request.method == "POST":
-        #     #take in image here and get to client
-        #     pass
+
         return render_template("capture.html")
+    
+    @app.route("/final_image", methods = ["POST"])
+    def final_image():
+        """
+        Route accepting a photo that was either uploaded or captured and giving it to machine learning client through MongoDB.
+        Renders final page with output from machine learning client
+        Returns:
+            rendered template (str): The rendered HTML template.
+        """
+        image = request.form.get("myFile")
+
+        im = Image.open(image)
+
+        image_bytes = io.BytesIO()
+        im.save(image_bytes, format='JPEG')
+
+        image = {
+            'data': image_bytes.getvalue()
+        }
+
+        #image_id = images.insert_one(image).inserted_id
+
+        return render_template("output.html")
     
 
     @app.errorhandler(Exception)
