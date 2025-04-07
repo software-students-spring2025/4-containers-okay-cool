@@ -24,10 +24,9 @@ img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)	# pylint: disable=E1101
 # Detect faces w/ MTCNN & extract their count
 detector = MTCNN()
 faces = detector.detect_faces(img_rgb)
+NUM_FACES = 0
 if faces:
-    num_faces = len(faces)
-else:
-	num_faces = 0
+    NUM_FACES = len(faces)
 
 # Creating side-by-side sub-plots
 fig, axs = plt.subplots(1, 2, figsize=(20, 10), gridspec_kw={'wspace': 0.05})
@@ -75,7 +74,7 @@ elapsed_time = end_time - start_time
 rounded_time = round(elapsed_time, 1)
 
 # Printing data
-print(f"{num_faces} FACES")
+print(f"{NUM_FACES} FACES")
 print(f"{rounded_time} SEC.")
 
 # Display side-by-side plot
