@@ -35,28 +35,26 @@
                 photoElement.style.display = 'block';
 
                 const imageFile = photoElement.files[0]; // Get the image file from an input element
-            const formData = new FormData();
-            formData.append('image', imageFile); // Append the image file to FormData
+                const formData = new FormData();
+                formData.append('myFile', imageFile); // Append the image file to FormData
 
-            fetch('/final_image', {
-            method: 'POST',
-            body: formData,
-            })
-            .then(response => {
-            if (response.ok) {
-                console.log('Image uploaded successfully');
-            } else {
-                console.error('Image upload failed');
-            }
-            })
-            .catch(error => {
-            console.error('Error:', error);
-            });
+                fetch("{{ url_for('final_image') }}", {
+                method: 'POST',
+                body: formData,
+                })
+                .then(response => {
+                if (response.ok) {
+                    console.log('Image uploaded successfully');
+                } else {
+                    console.error('Image upload failed');
+                }
+                })
+                .catch(error => {
+                console.error('Error:', error);
+                });
 
             }
 
             captureButton.addEventListener('click', capturePhoto);
-
-
         </script>
 {% endblock %}

@@ -4,6 +4,7 @@ from dotenv import load_dotenv, dotenv_values
 import pymongo
 from PIL import Image
 import io
+import logging
 
 load_dotenv()  # load environment variables from .env file
 
@@ -18,14 +19,23 @@ def create_app():
     config = dotenv_values()
     app.config.from_mapping(config)
 
-    # cxn = pymongo.MongoClient(os.getenv("MONGO_URI"))
-    # db = cxn[os.getenv("MONGO_DBNAME")]
+    cxn = pymongo.MongoClient(os.getenv("MONGO_URI"))
+    db = cxn[os.getenv("MONGO_DBNAME")]
+    
+    try:
+        cxn.admin.command("ping")
+        print(" *", "Connected to MongoDB!")
+    except Exception as e:
+        print(" * MongoDB connection error:", e)
 
-    # try:
-    #     cxn.admin.command("ping")
-    #     print(" *", "Connected to MongoDB!")
-    # except Exception as e:
-    #     print(" * MongoDB connection error:", e)
+    # Set up logging in Docker container's output
+    logging.basicConfig(level=logging.DEBUG)
+
+    # Drop all collections to prevent duplicated data getting 
+    # inserted into the database whenever the app is restarted
+    collections = db.list_collection_names()
+    for collection in collections:
+        db[collection].drop()
 
     @app.route("/")
     def home():
@@ -34,6 +44,7 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
+
         return render_template("index.html")
     
     @app.route("/upload")
@@ -64,7 +75,7 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        image = request.form.get("myFile")
+        image = request.form.get("myFile", "")
 
         im = Image.open(image)
 
@@ -75,9 +86,16 @@ def create_app():
             'data': image_bytes.getvalue()
         }
 
-        #image_id = images.insert_one(image).inserted_id
+        # add image to collection of new images
+        image_id = db.user_image.insert_one(image).inserted_id
+        app.logger.debug('adding image to collection: %s', image_id)
 
-        return render_template("output.html")
+        # TODO: then fetch image and id and pass to ml client
+
+        # TODO: add new image to separate collection with id of original 
+
+        # TODO: pass new image to output page to display
+        return render_template("output.html") #, new_image)
     
 
     @app.errorhandler(Exception)
