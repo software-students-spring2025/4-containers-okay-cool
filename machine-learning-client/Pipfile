@@ -10,6 +10,7 @@ matplotlib = "*"
 mtcnn = "*"
 tensorflow = "*"
 opencv-python = "*"
+tomli = "*"
 
 [dev-packages]
 
