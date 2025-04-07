@@ -2,7 +2,7 @@
 Face Redaction Client
 
 This script continuously processes images, detecting faces using MTCNN,
-redacting them by filling in their boundary boxes, and storing the 
+redacting them by filling in their boundary boxes, and storing the
 analysis results in MongoDB.
 """
 
@@ -101,7 +101,11 @@ class FaceRedactionClient:
         return img_with_patches, num_faces
 
     def store_result(
-        self, filename: str, num_faces: int, confidence_scores: List[float], processing_time: float
+        self,
+        filename: str,
+        num_faces: int,
+        confidence_scores: List[float],
+        processing_time: float,
     ) -> None:
         """
         Store face detection result in MongoDB.
@@ -120,7 +124,7 @@ class FaceRedactionClient:
             "processing_time": processing_time,
         }
         self.collection.insert_one(result)
-        logger.info(f"Stored result for {filename}: {num_faces} faces detected")
+        logger.info("Stored result for %s: %s faces detected", filename, num_faces)
 
     def process_image(self, image_path: str) -> Optional[str]:
         """
@@ -134,67 +138,67 @@ class FaceRedactionClient:
         """
         try:
             start_time = time.time()
-            
+
             # Read the image
             img = cv2.imread(image_path)
             if img is None:
-                logger.error(f"Failed to read image: {image_path}")
+                logger.error("Failed to read image: %s", image_path)
                 return None
-                
+
             # Convert to RGB for MTCNN
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
+
             # Detect faces
             faces = self.detect_faces(img_rgb)
-            
+
             # Redact faces
             img_redacted, num_faces = self.redact_faces(img, faces)
-            
+
             # Generate output filename
             base_name = os.path.basename(image_path)
             name, ext = os.path.splitext(base_name)
             output_path = os.path.join(OUTPUT_DIR, f"{name}_redacted{ext}")
             archive_path = os.path.join(ARCHIVE_DIR, base_name)
-            
+
             # Save redacted image
             cv2.imwrite(output_path, img_redacted)
-            
+
             # Move original image to archive
             os.rename(image_path, archive_path)
-            
+
             # Calculate processing time
             processing_time = time.time() - start_time
-            
+
             # Extract confidence scores
             confidence_scores = [face["confidence"] for face in faces] if faces else []
-            
+
             # Store result in MongoDB
             self.store_result(base_name, num_faces, confidence_scores, processing_time)
-            
+
             logger.info(
-                f"Processed {base_name}: {num_faces} faces, {processing_time:.2f}s"
+                "Processed %s: %s faces, %.2fs", base_name, num_faces, processing_time
             )
             return output_path
-            
+
         except Exception as e:
-            logger.error(f"Error processing {image_path}: {str(e)}")
+            logger.error("Error processing %s: %s", image_path, str(e))
             return None
 
     def run(self) -> None:
         """Run the face redaction client in continuous mode."""
         logger.info("Starting face redaction client")
-        
+
         while True:
             # Get all image files in input directory
             image_files = []
             for ext in [".jpg", ".jpeg", ".png"]:
                 image_files.extend(list(Path(INPUT_DIR).glob(f"*{ext}")))
                 image_files.extend(list(Path(INPUT_DIR).glob(f"*{ext.upper()}")))
-            
+
             # Process each image
             for image_path in image_files:
                 self.process_image(str(image_path))
-            
+
             # Wait before checking for new images
             time.sleep(POLL_INTERVAL)
 
