@@ -1,0 +1,33 @@
+name: Machine Learning Client CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  test-ml-client:
+    name: Test Machine Learning Client
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: machine-learning-client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pipenv
+          pipenv install --dev
+
+      - name: Run Tests
+        run: run: pipenv run pytest tests/
