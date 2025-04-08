@@ -19,7 +19,7 @@ jobs:
         run: |
           cd ${{ matrix.subdir }}
           python -m pip install --upgrade pip
-          python -m pip install pipenv
+          python -m pip install pipenv tomli
           pipenv sync --dev --python $(which python)
           pipenv shell --fancy --python $(which python)
       - name: Lint with pylint
