@@ -20,7 +20,6 @@ jobs:
           cd ${{ matrix.subdir }}
           python -m pip install --upgrade pip
           python -m pip install pipenv tomli pylint
-          pip install -r requirements.txt
           pipenv sync --dev --python $(which python)
           pipenv shell --fancy --python $(which python)
       - name: Lint with pylint
@@ -28,6 +27,7 @@ jobs:
         # you may set pylint to ignore any files or dependencies that make no sense to lint
         run: |
           cd ${{ matrix.subdir }}
+          pip install -r requirements.txt
           python -m pylint **/*.py
       - name: Format with black
         if: ${{ hashFiles(format('{0}/**/*.py', matrix.subdir)) != '' }}
