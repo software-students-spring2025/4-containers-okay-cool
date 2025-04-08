@@ -2,32 +2,42 @@ name: Machine Learning Client CI
 
 on:
   pull_request:
-    branches: [ main ]
+    types: [opened, synchronize, reopened]
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   test-ml-client:
     name: Test Machine Learning Client
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     defaults:
       run:
         working-directory: machine-learning-client
 
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install Python, pipenv and Pipfile packages
+        uses: kojoru/prepare-pipenv@v1
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: |
-          pip install pipenv
-          pipenv install --dev
+      - name: Turn on 'editable' mode
+        run: pipenv install -e .
+
+      - name: Install pytest
+        run: pipenv install pytest
+
+      - name: Show venv location (optional debug)
+        run: pipenv --venv
 
       - name: Run Tests
-        run: run: pipenv run pytest tests/
+        run: pipenv run pytest tests/
