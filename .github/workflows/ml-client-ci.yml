@@ -17,27 +17,19 @@ jobs:
       run:
         working-directory: machine-learning-client
 
-    strategy:
-      matrix:
-        python-version: ["3.11"]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Python, pipenv and Pipfile packages
-        uses: kojoru/prepare-pipenv@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.11'
 
-      - name: Turn on 'editable' mode
-        run: pipenv install -e .
+      - name: Install pipenv and dependencies
+        run: |
+          pip install pipenv
+          pipenv install --dev
 
-      - name: Install pytest
-        run: pipenv install pytest
-
-      - name: Show venv location (optional debug)
-        run: pipenv --venv
-
-      - name: Run Tests
+      - name: Run tests with pytest
         run: pipenv run pytest tests/
