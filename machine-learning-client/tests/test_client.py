@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 # from client import FaceRedactionClient
-from machine_learning_client.client import FaceRedactionClient
+from client import FaceRedactionClient
 
 
 @pytest.fixture
