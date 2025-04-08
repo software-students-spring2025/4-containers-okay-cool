@@ -33,4 +33,4 @@ jobs:
 
       - name: Run tests with pytest
         # run: pipenv run pytest tests/
-        run: PYTHONPATH=. pipenv run pytest machine-learning-client/tests/
+        run: PYTHONPATH=. pipenv run pytest tests/
