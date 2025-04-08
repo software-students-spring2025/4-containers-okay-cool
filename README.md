@@ -1,3 +1,4 @@
+[![Machine Learning Client CI](https://github.com/software-students-spring2025/4-containers-okay-cool/actions/workflows/ml-client-ci.yml/badge.svg)](https://github.com/software-students-spring2025/4-containers-okay-cool/actions/workflows/ml-client-ci.yml)
 ![Lint-free](https://github.com/nyu-software-engineering/containerized-app-exercise/actions/workflows/lint.yml/badge.svg)
 
 # Containerized App Exercise

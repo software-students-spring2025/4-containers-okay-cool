@@ -13,7 +13,6 @@ opencv-python = "*"
 tomli = "*"
 pymongo = "*"
 python-dotenv = "*"
-pytest = "*"
 pytest-cov = "*"
 
 [dev-packages]

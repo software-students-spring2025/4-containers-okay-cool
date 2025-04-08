@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import pytest
 
+# from client import FaceRedactionClient
 from client import FaceRedactionClient
 
 
