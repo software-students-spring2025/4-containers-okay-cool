@@ -1,4 +1,4 @@
-name: ML-Client-CI
+name: Web-App-CI
 
 on:
   pull_request:
@@ -9,13 +9,13 @@ on:
 
 jobs:
   test-ml-client:
-    name: Test Machine Learning Client
+    name: Test Web App
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     defaults:
       run:
-        working-directory: machine-learning-client
+        working-directory: web-app
 
     steps:
       - name: Checkout code
