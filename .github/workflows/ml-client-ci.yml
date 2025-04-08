@@ -32,4 +32,5 @@ jobs:
           pipenv install --dev
 
       - name: Run tests with pytest
-        run: pipenv run pytest tests/
+        # run: pipenv run pytest tests/
+        run: PYTHONPATH=. pipenv run pytest machine-learning-client/tests/
