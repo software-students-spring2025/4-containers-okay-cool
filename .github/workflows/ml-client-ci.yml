@@ -11,7 +11,23 @@ jobs:
   test-ml-client:
     name: Test Machine Learning Client
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+
+    # Add MongoDB as a service container
+    services:
+      mongodb:
+        image: mongo:latest
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: secret
+        ports:
+          - 27017:27017
+        # Health check to wait for MongoDB to be ready
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     defaults:
       run:
@@ -31,5 +47,8 @@ jobs:
           pip install pipenv
           pipenv install --dev
 
-      - name: Run tests with pytest
-        run: PYTHONPATH=. pipenv run pytest tests/
+      - name: Run all tests with pytest
+        env:
+          MONGO_URI: mongodb://admin:secret@localhost:27017
+          MONGO_DBNAME: test_face_redaction_db
+        run: PYTHONPATH=. pipenv run pytest tests/ -v
