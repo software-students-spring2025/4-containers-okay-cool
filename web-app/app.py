@@ -109,7 +109,7 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        return render_template("error.html", error=e)
+        return render_template("error.html", error=e), 404
 
     return app
 
