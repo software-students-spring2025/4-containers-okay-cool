@@ -162,12 +162,17 @@ def create_app():
             # Convert string ID to ObjectId
             object_id = ObjectId(file_id)
             
-            # Find the processing record
-            record = processing_collection.find_one({"_id": object_id})
+            app.logger.debug(f"Checking status for file_id: {file_id}")
+            
+            # Find the processing record by input_file_id instead of _id
+            record = processing_collection.find_one({"input_file_id": object_id})
             
             if not record:
+                app.logger.warning(f"No processing record found with input_file_id: {object_id}")
                 return jsonify({"error": "Processing record not found"}), 404
-                
+            
+            app.logger.debug(f"Found processing record: {record.get('_id')} with status: {record.get('status', 'unknown')}")
+            
             # Return the status
             response = {
                 "status": record.get("status", "unknown")
@@ -175,12 +180,14 @@ def create_app():
             
             # If completed, also return the output file ID
             if record.get("status") == "completed" and "output_file_id" in record:
-                response["file_id"] = str(record["output_file_id"])
-                
+                response["file_id"] = str(record["_id"])  # Return the processing record ID for the get_image endpoint
+                app.logger.debug(f"Processing completed, output_file_id: {record.get('output_file_id')}")
+            
             # If failed, include the error message
             if record.get("status") == "failed" and "error" in record:
                 response["error"] = record["error"]
-                
+                app.logger.warning(f"Processing failed with error: {record.get('error')}")
+            
             return jsonify(response)
                 
         except Exception as e:

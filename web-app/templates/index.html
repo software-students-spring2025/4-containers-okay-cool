@@ -196,7 +196,7 @@
         .then(response => response.json())
         .then(data => {
           if (data.status === 'completed') {
-            // Processing finished - redirect to results page
+            // Processing finished - redirect to results page with the processing record ID
             window.location.href = `/get_image/${data.file_id}`;
           } else if (data.status === 'failed') {
             // Processing failed
@@ -205,7 +205,12 @@
                 <p>Processing failed: ${data.error || 'Unknown error'}</p>
               </div>`;
           } else {
-            // Still processing, continue polling
+            // Still processing, update status message
+            document.getElementById('uploadStatus').innerHTML = 
+              `<div class="alert alert-info">
+                <p>Processing your image... Status: ${data.status}</p>
+              </div>`;
+            // Continue polling
             setTimeout(checkStatus, 1000); // Check every second
           }
         })
@@ -213,6 +218,8 @@
           console.error('Error checking status:', error);
           document.getElementById('uploadStatus').innerHTML = 
             `<div class="alert alert-danger">Error checking status: ${error.message}</div>`;
+          // Try again after a delay
+          setTimeout(checkStatus, 2000);
         });
     };
     
