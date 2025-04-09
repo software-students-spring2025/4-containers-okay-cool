@@ -85,8 +85,8 @@ def create_app():
 
         # see if they have custom image
         cover_image = request.files.get("coverImage")
-        if cover_image and allowed_file(image_file.filename):
-            filename = secure_filename(image_file.filename)
+        if cover_image and allowed_file(cover_image.filename):
+            filename = secure_filename(cover_image.filename)
             cover_path = os.path.join(INPUT_DIR, filename)
             cover_image.save(cover_path)
 
@@ -94,9 +94,10 @@ def create_app():
             app.logger.debug('adding cover_file path to image: %s', add_cover)
 
         # TODO: then fetch image and id and pass to ml client
+        image = db.input_image.find_one({"_id": og_file_id})
         # TODO: add new image to separate collection with id of original 
         # TODO: pass new image to output page to display
-        return render_template("index.html") #, new_image)
+        return render_template("index.html", {'output_path': image["path"], "success": True})
     
 
     @app.errorhandler(Exception)
