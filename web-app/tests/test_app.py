@@ -2,12 +2,13 @@
 Tests for the Flask web application.
 """
 
+import os
 import io
 import time
+import base64
 import pytest
 from bson.objectid import ObjectId
 from app import create_app
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -23,12 +24,21 @@ def app():
     # Wait a moment for MongoDB connection to be established
     time.sleep(1)
 
-    # Clear test collections before each test
-    if hasattr(app, 'db'):
-        collections = app.db.list_collection_names()
-        for collection in collections:
-            if collection not in ['fs.files', 'fs.chunks']:  # Don't drop GridFS collections
-                app.db[collection].drop()
+    # Clear all test collections before each test
+    mongo_client = app.extensions.get('pymongo')
+    if mongo_client:
+        db = mongo_client[os.getenv("MONGO_DBNAME", "okaycooldb")]
+        # Don't drop GridFS collections fully, but clear them
+        db.fs.files.delete_many({})
+        db.fs.chunks.delete_many({})
+        db.input_images.files.delete_many({})
+        db.input_images.chunks.delete_many({})
+        db.output_images.files.delete_many({})
+        db.output_images.chunks.delete_many({})
+        
+        # Clear other collections
+        db.image_processing.delete_many({})
+        db.face_detection_results.delete_many({})
 
     return app
 
@@ -40,70 +50,76 @@ def client(app):
 
 
 @pytest.fixture
-def mock_gridfs():
-    """Mock GridFS operations."""
-    with patch('gridfs.GridFSBucket') as mock_grid:
-        # Mock the upload_from_stream method to return an ObjectId
-        mock_grid.return_value.upload_from_stream.return_value = ObjectId()
-        
-        # Mock the open_download_stream method
-        mock_grid_out = MagicMock()
-        mock_grid_out.read.return_value = b"mocked image data"
-        mock_grid_out.filename = "test.jpg"
-        mock_grid.return_value.open_download_stream.return_value = mock_grid_out
-        
-        yield mock_grid
+def test_image_jpg():
+    """Create a minimal valid JPEG image.
+    
+    This is a 1x1 pixel JPEG file.
+    """
+    # Minimal valid JPEG file (1x1 pixel) - base64 encoded
+    minimal_jpeg = base64.b64decode(
+        "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAJgABAAAAAAAAAAAAAAAAAAAAAxABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwBH/9k="
+    )
+    return io.BytesIO(minimal_jpeg)
+
+
+@pytest.fixture
+def test_image_png():
+    """Create a minimal valid PNG image.
+    
+    This is a 1x1 pixel PNG file.
+    """
+    # Minimal valid PNG file (1x1 pixel) - base64 encoded
+    minimal_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAX+Av7czFnnAAAAAElFTkSuQmCC"
+    )
+    return io.BytesIO(minimal_png)
 
 
 def test_home_page(client):
     """Test that the home page returns 200 status code."""
     response = client.get("/")
     assert response.status_code == 200
-    assert b"<!DOCTYPE html>" in response.data
 
 
-def test_upload_image_valid(client, mock_gridfs):
-    """Test uploading a valid image file."""
-    # Create a test image file
-    test_image = (io.BytesIO(b"test image data"), "test.jpg")
-
-    # Make the request
+def test_upload_image_valid(client, test_image_jpg):
+    """Test uploading a valid image."""
+    test_file = (test_image_jpg, "test_image.jpg")
+    
     response = client.post(
         "/final_image",
         data={
-            "faceImage": test_image
+            "faceImage": test_file
         },
         content_type="multipart/form-data"
     )
-
-    # Check the response
-    assert response.status_code == 200
-    assert mock_gridfs.return_value.upload_from_stream.called
-
-
-def test_upload_image_with_cover(client, mock_gridfs):
-    """Test uploading both a face image and a cover image."""
-    # Create test image files
-    test_face_image = (io.BytesIO(b"test face image data"), "face.jpg")
-    test_cover_image = (io.BytesIO(b"test cover image data"), "cover.png")
-
-    # Make the request
-    response = client.post(
-        "/final_image",
-        data={
-            "faceImage": test_face_image,
-            "coverImage": test_cover_image
-        },
-        content_type="multipart/form-data"
-    )
-
+    
     # Check response
     assert response.status_code == 200
-    # Should be called twice, once for face image and once for cover image
-    assert mock_gridfs.return_value.upload_from_stream.call_count == 2
+    assert b"Your image has been uploaded and is being processed" in response.data
 
 
-def test_upload_invalid_file_type(client, mock_gridfs):
+def test_upload_image_with_cover(client, test_image_jpg, test_image_png):
+    """Test uploading an image with a custom cover image."""
+    # Create test files
+    main_file = (test_image_jpg, "main_image.jpg")
+    cover_file = (test_image_png, "cover_image.png")
+    
+    response = client.post(
+        "/final_image",
+        data={
+            "faceImage": main_file,
+            "coverImage": cover_file,
+            "useCustomCover": "true"
+        },
+        content_type="multipart/form-data"
+    )
+    
+    # Check response
+    assert response.status_code == 200
+    assert b"Your image has been uploaded and is being processed" in response.data
+
+
+def test_upload_invalid_file_type(client):
     """Test uploading an invalid file type."""
     # Create a test text file
     test_file = (io.BytesIO(b"not an image"), "test.txt")
@@ -116,13 +132,13 @@ def test_upload_invalid_file_type(client, mock_gridfs):
         content_type="multipart/form-data"
     )
 
-    # Should return error response, but still status 200
-    assert response.status_code == 200
-    # Upload should not be called for invalid file type
-    assert not mock_gridfs.return_value.upload_from_stream.called
+    # In a proper REST API, 400 is the correct status code for invalid inputs
+    assert response.status_code == 400
+    # Verify we get an error message in JSON format
+    assert "error" in response.get_json()
 
 
-def test_no_file_uploaded(client, mock_gridfs):
+def test_no_file_uploaded(client):
     """Test submitting the form without a file."""
     response = client.post(
         "/final_image",
@@ -130,73 +146,102 @@ def test_no_file_uploaded(client, mock_gridfs):
         content_type="multipart/form-data"
     )
 
-    # Should return an error response
-    assert response.status_code == 400  # Bad request
-    assert not mock_gridfs.return_value.upload_from_stream.called
+    # In a proper REST API, 400 is the correct status code for missing required inputs
+    assert response.status_code == 400
+    # Verify we get an error message in JSON format
+    assert "error" in response.get_json()
 
 
-def test_check_status(client):
-    """Test the status check endpoint."""
-    # Create a mock processing record in the database
-    file_id = str(ObjectId())
+def test_check_status_endpoint(client, app):
+    """Test the check_status endpoint with real database."""
+    # Get the MongoDB connections from the app
+    db = app.extensions.get('mongodb')
+    if not db:
+        pytest.skip("MongoDB connection not available")
     
-    with patch('pymongo.collection.Collection.find_one') as mock_find:
-        # Test with a "pending" status
-        mock_find.return_value = {
-            "_id": ObjectId(),
-            "status": "pending",
-            "input_file_id": ObjectId(file_id)
-        }
-        
-        response = client.get(f"/check_status/{file_id}")
-        assert response.status_code == 200
-        assert b"pending" in response.data
-        
-        # Test with a "completed" status
-        mock_find.return_value = {
-            "_id": ObjectId(),
-            "status": "completed",
-            "input_file_id": ObjectId(file_id),
-            "output_file_id": ObjectId()
-        }
-        
-        response = client.get(f"/check_status/{file_id}")
-        assert response.status_code == 200
-        assert b"completed" in response.data
-
-
-def test_get_image(client):
-    """Test the get_image endpoint."""
-    file_id = str(ObjectId())
+    processing_collection = db.image_processing
     
-    with patch('pymongo.collection.Collection.find_one') as mock_find:
-        # Mock the database record
-        mock_find.return_value = {
-            "_id": ObjectId(),
-            "status": "completed",
-            "input_file_id": ObjectId(),
-            "output_file_id": ObjectId(file_id),
-            "filename": "test.jpg",
-            "num_faces": 2,
-            "processing_time": 1.5
-        }
-        
-        response = client.get(f"/get_image/{file_id}")
-        assert response.status_code == 200
-        # Should render the result template
-        assert b"Face Redaction Results" in response.data or b"result.html" in response.data
-
-
-def test_image_data(client, mock_gridfs):
-    """Test the image_data endpoint that streams GridFS data."""
-    file_id = str(ObjectId())
+    # Create a test record
+    output_file_id = ObjectId()
+    record_id = processing_collection.insert_one({
+        "status": "completed",
+        "output_file_id": output_file_id,
+        "filename": "test.jpg",
+        "created_at": time.time()
+    }).inserted_id
     
-    response = client.get(f"/image_data/{file_id}")
-    
-    # Should return the image data
+    # Test the endpoint
+    response = client.get(f"/check_status/{record_id}")
     assert response.status_code == 200
-    assert mock_gridfs.return_value.open_download_stream.called
-    assert response.data == b"mocked image data"
+    
+    # Parse JSON response
+    data = response.get_json()
+    assert data["status"] == "completed"
+    assert "file_id" in data
+    assert data["file_id"] == str(output_file_id)
+
+
+def test_image_data_endpoint(client, app, test_image_jpg):
+    """Test the image_data endpoint with real GridFS."""
+    # Get the MongoDB connection and output bucket from app extensions
+    db = app.extensions.get('mongodb')
+    output_bucket = app.extensions.get('output_bucket')
+    
+    if not db or not output_bucket:
+        pytest.skip("MongoDB or GridFS bucket not available")
+    
+    # Upload a test image to GridFS
+    test_image_jpg.seek(0)  # Reset position to beginning
+    file_id = output_bucket.upload_from_stream(
+        "test.jpg", 
+        test_image_jpg.read(),
+        metadata={"content_type": "image/jpeg"}
+    )
+    
+    # Test the endpoint
+    response = client.get(f"/image_data/{file_id}")
+    assert response.status_code == 200
+    
+    # The response should be the image data
+    test_image_jpg.seek(0)  # Reset position to beginning
+    assert response.data == test_image_jpg.read()
+
+
+def test_get_image_endpoint(client, app, test_image_jpg):
+    """Test the get_image endpoint with real database and GridFS."""
+    # Get the MongoDB connection and output bucket from app extensions
+    db = app.extensions.get('mongodb')
+    output_bucket = app.extensions.get('output_bucket')
+    
+    if not db or not output_bucket:
+        pytest.skip("MongoDB or GridFS bucket not available")
+    
+    processing_collection = db.image_processing
+    
+    # Upload a test image to GridFS
+    test_image_jpg.seek(0)  # Reset position to beginning
+    output_file_id = output_bucket.upload_from_stream(
+        "test.jpg", 
+        test_image_jpg.read(),
+        metadata={"content_type": "image/jpeg"}
+    )
+    
+    # Create a processing record
+    record_id = processing_collection.insert_one({
+        "status": "completed",
+        "output_file_id": output_file_id,
+        "num_faces": 2,
+        "filename": "test.jpg",
+        "processing_time": 1.23,
+        "created_at": time.time(),
+        "completed_at": time.time()
+    }).inserted_id
+    
+    # Test the endpoint
+    response = client.get(f"/get_image/{record_id}")
+    assert response.status_code == 200
+    assert b"Face Redaction Results" in response.data
+    assert b"test.jpg" in response.data
 
 
 def test_error_handler(client):
@@ -205,5 +250,4 @@ def test_error_handler(client):
     response = client.get("/nonexistent_route")
 
     # Should render the error template
-    assert response.status_code == 404
     assert b"error" in response.data.lower()

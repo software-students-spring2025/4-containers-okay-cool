@@ -26,11 +26,23 @@ def create_app():
     config = dotenv_values()
     app.config.from_mapping(config)
 
+    # Create MongoDB connection
     cxn = pymongo.MongoClient(os.getenv("MONGO_URI"))
     db = cxn[os.getenv("MONGO_DBNAME")]
+    
+    # Store MongoDB client and DB as Flask extensions
+    if not hasattr(app, 'extensions'):
+        app.extensions = {}
+    app.extensions['pymongo'] = cxn
+    app.extensions['mongodb'] = db
+    
+    # Create GridFS buckets
     input_bucket = gridfs.GridFSBucket(db, bucket_name="input_images")
     output_bucket = gridfs.GridFSBucket(db, bucket_name="output_images")
-
+    
+    # Store GridFS buckets as Flask extensions
+    app.extensions['input_bucket'] = input_bucket
+    app.extensions['output_bucket'] = output_bucket
 
     try:
         cxn.admin.command("ping")
@@ -204,10 +216,12 @@ def create_app():
             if not output_file_id:
                 return render_template("error.html", error="Output file ID not found")
                 
-            # Get the output file metadata
-            output_file = output_bucket.find_one({"_id": output_file_id})
-            if not output_file:
-                return render_template("error.html", error="Output file not found")
+            # Check if the output file exists
+            try:
+                # Try to open the file to verify it exists
+                output_bucket.open_download_stream(output_file_id)
+            except Exception as e:
+                return render_template("error.html", error=f"Output file not found: {str(e)}")
                 
             # Render the result template with the file ID and metadata
             return render_template(
