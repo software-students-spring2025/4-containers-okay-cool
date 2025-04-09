@@ -83,20 +83,12 @@ def create_app():
             og_file_id = db.input_image.insert_one(image_data)
             app.logger.debug('adding image to collection: %s', og_file_id)
 
-
-
-        # im = Image.open(image)
-
-        # image_bytes = io.BytesIO()
-        # im.save(image_bytes, format='JPEG')
-
-        # image = {
-        #     'data': image_bytes.getvalue()
-        # }
-
-        # # add image to collection of new images
-        # image_id = db.user_image.insert_one(image).inserted_id
-        # app.logger.debug('adding image to collection: %s', image_id)
+        # see if they have custom image
+        cover_image = request.files.get("coverImage")
+        if cover_image and allowed_file(image_file.filename):
+            filename = secure_filename(image_file.filename)
+            cover_path = os.path.join(INPUT_DIR, filename)
+            cover_image.save(cover_path)
 
         # TODO: then fetch image and id and pass to ml client
         # TODO: add new image to separate collection with id of original 
