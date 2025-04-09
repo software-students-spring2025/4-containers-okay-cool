@@ -176,7 +176,7 @@ def test_check_status_endpoint(client, app):  # pylint: disable=redefined-outer-
     """Test the check_status endpoint with real database."""
     # Get the MongoDB connections from the app
     db = app.extensions.get("mongodb")
-    if not db:
+    if db is None:
         pytest.skip("MongoDB connection not available")
 
     processing_collection = db.image_processing
@@ -213,7 +213,7 @@ def test_image_data_endpoint(  # pylint: disable=redefined-outer-name
     db = app.extensions.get("mongodb")
     output_bucket = app.extensions.get("output_bucket")
 
-    if not db or not output_bucket:
+    if db is None or output_bucket is None:
         pytest.skip("MongoDB or GridFS bucket not available")
 
     # Upload a test image to GridFS
@@ -239,7 +239,7 @@ def test_get_image_endpoint(  # pylint: disable=redefined-outer-name
     db = app.extensions.get("mongodb")
     output_bucket = app.extensions.get("output_bucket")
 
-    if not db or not output_bucket:
+    if db is None or output_bucket is None:
         pytest.skip("MongoDB or GridFS bucket not available")
 
     processing_collection = db.image_processing
