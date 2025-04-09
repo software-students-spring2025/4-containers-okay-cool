@@ -10,10 +10,10 @@ jobs:
         subdir: [web-app, machine-learning-client]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10" # update version(s) as needed
+          python-version: '3.11'
       - name: Install dependencies
         if: ${{ hashFiles(format('{0}/**/*.py', matrix.subdir)) != '' }}
         run: |
