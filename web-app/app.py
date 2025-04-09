@@ -12,6 +12,8 @@ from werkzeug.utils import secure_filename
 load_dotenv()  # load environment variables from .env file
 
 INPUT_DIR = os.getenv("INPUT_DIR", "images/input")
+INPUT_DIR = os.getenv("OUTPUT_DIR", "images/output")
+
 
 def create_app():
     """
