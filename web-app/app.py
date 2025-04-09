@@ -3,7 +3,7 @@
 import os
 import io
 import logging
-from flask import Flask, render_template, request #, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
 from PIL import Image
@@ -58,20 +58,22 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        image = request.form.get("myFile", "")
+        image = request.files.get("faceImage", "")
+        app.logger.debug("file %s", image.filename)
 
-        im = Image.open(image)
 
-        image_bytes = io.BytesIO()
-        im.save(image_bytes, format='JPEG')
+        # im = Image.open(image)
 
-        image = {
-            'data': image_bytes.getvalue()
-        }
+        # image_bytes = io.BytesIO()
+        # im.save(image_bytes, format='JPEG')
 
-        # add image to collection of new images
-        image_id = db.user_image.insert_one(image).inserted_id
-        app.logger.debug('adding image to collection: %s', image_id)
+        # image = {
+        #     'data': image_bytes.getvalue()
+        # }
+
+        # # add image to collection of new images
+        # image_id = db.user_image.insert_one(image).inserted_id
+        # app.logger.debug('adding image to collection: %s', image_id)
 
         # TODO: then fetch image and id and pass to ml client
         # TODO: add new image to separate collection with id of original 

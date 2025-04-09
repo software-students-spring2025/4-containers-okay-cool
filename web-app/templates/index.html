@@ -23,9 +23,9 @@
         <h2>Redact your Face</h2>
         <div id="container">
             <video autoplay="true" id="videoElement"></video>
-            <canvas id="canvasElement" style="display: none;"></canvas>
-            <img id="photoElement" style="display: none;">
         </div>
+        <canvas id="canvasElement" style="display: none;"></canvas>
+        <img id="photoElement" style="display: none;">
         <button id="captureButton">Capture Photo</button>
 
         <script>
@@ -33,7 +33,7 @@
             const canvasElement = document.getElementById('canvasElement');
             const photoElement = document.getElementById('photoElement');
             const captureButton = document.getElementById('captureButton');
-
+            const uploadButton = document.getElementById('upload');
 
             if (navigator.mediaDevices.getUserMedia) {
                 navigator.mediaDevices.getUserMedia({ video: true })
@@ -51,31 +51,30 @@
                 canvasElement.getContext('2d').drawImage(videoElement, 0, 0);
                 const photoDataUrl = canvasElement.toDataURL('image/jpeg');
                 photoElement.src = photoDataUrl;
-                photoElement.style.display = 'block';
 
-                const imageFile = photoElement.files[0]; // Get the image file from an input element
-                const formData = new FormData();
-                formData.append('myFile', imageFile); // Append the image file to FormData
+                canvas.toBlob(function(blob) {
+                    const formData = new FormData();
+                    formData.append('faceImage', blob, 'face_upload.png');
 
-                fetch("{{ url_for('final_image') }}", {
-                method: 'POST',
-                body: formData,
-                })
-                .then(response => {
-                if (response.ok) {
-                    console.log('Image uploaded successfully');
-                } else {
-                    console.error('Image upload failed');
-                }
-                })
-                .catch(error => {
-                console.error('Error:', error);
+                    // Send a POST request to upload the image
+                    fetch('/final_image', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.text())
+                    .then(responseText => {
+                        // Reload the page to display the uploaded image
+                        document.location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error uploading image:', error);
+                    });
                 });
-
             }
 
             captureButton.addEventListener('click', capturePhoto);
         </script>
+
         <h2>Upload Photo</h2>
         <form method="POST" action="{{ url_for('final_image') }}" enctype=multipart/form-data>
             Upload photo to block out: <input type="file" name="faceImage" accept="image/png, image/jpeg" required><br>
@@ -83,6 +82,8 @@
             <input type="submit" value=Upload>
         </form>
         <h2>Redacted Image:</h2>
-        <img id="photoElement" style="display: none;">
+        {{% if final_image %}}
+        <img id="photoElement" src="{{final_image}}">
+        {{% endif %}}
     </body>
 </html>
