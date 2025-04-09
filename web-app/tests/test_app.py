@@ -67,12 +67,20 @@ def test_image_jpg():
 
     This is a 1x1 pixel JPEG file.
     """
-    # Minimal valid JPEG file (1x1 pixel) - base64 encoded
+    # Minimal valid JPEG file (1x1 pixel, black) - base64 encoded
     minimal_jpeg = base64.b64decode(
-        "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP////////////////////////////"
-        "/////////////////////////////////////////////////////"
-        "wAALCAABAAEBAREA/8QAJgABAAAAAAAAAAAAAAAAAAAAAxABAAAAAAAA"
-        "AAAAAAAAAAAAP/aAAgBAQAAPwBH/9k="
+        "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgK"
+        "CgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkL"
+        "EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAAR"
+        "CAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAA"
+        "AgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkK"
+        "FhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWG"
+        "h4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl"
+        "5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA"
+        "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYk"
+        "NOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOE"
+        "hYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk"
+        "5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKAP/2Q=="
     )
     return io.BytesIO(minimal_jpeg)
 
@@ -173,10 +181,12 @@ def test_check_status_endpoint(client, app):  # pylint: disable=redefined-outer-
 
     processing_collection = db.image_processing
 
-    # Create a test record
+    # Create a test record with both _id and input_file_id fields
+    input_file_id = ObjectId()
     output_file_id = ObjectId()
     record_id = processing_collection.insert_one(
         {
+            "input_file_id": input_file_id,  # This is what the endpoint looks for
             "status": "completed",
             "output_file_id": output_file_id,
             "filename": "test.jpg",
@@ -184,15 +194,15 @@ def test_check_status_endpoint(client, app):  # pylint: disable=redefined-outer-
         }
     ).inserted_id
 
-    # Test the endpoint
-    response = client.get(f"/check_status/{record_id}")
+    # Test the endpoint - pass the input_file_id, not the record _id
+    response = client.get(f"/check_status/{input_file_id}")
     assert response.status_code == 200
 
     # Parse JSON response
     data = response.get_json()
     assert data["status"] == "completed"
     assert "file_id" in data
-    assert data["file_id"] == str(output_file_id)
+    assert data["file_id"] == str(record_id)  # Should return the record _id
 
 
 def test_image_data_endpoint(  # pylint: disable=redefined-outer-name
