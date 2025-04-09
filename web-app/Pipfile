@@ -20,6 +20,8 @@ coverage = "*"
 dnspython = "*"
 pymongo = {extras = ["tls", "srv"], version = "==4.10.0"}
 pillow = "*"
+tomli = "*"
+typing-extensions = "*"
 
 [dev-packages]
 
