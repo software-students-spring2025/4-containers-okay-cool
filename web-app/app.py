@@ -7,8 +7,11 @@ from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
 from PIL import Image
+from werkzeug.utils import secure_filename
 
 load_dotenv()  # load environment variables from .env file
+
+INPUT_DIR = os.getenv("INPUT_DIR", "images/input")
 
 def create_app():
     """
@@ -49,6 +52,10 @@ def create_app():
 
         return render_template("index.html")
     
+
+    def allowed_file(filename):
+        return '.' in filename and filename.rsplit('.', 1)[1].lower() in ["jpg", "png"]
+
     @app.route("/final_image", methods = ["POST"])
     def final_image():
         """
@@ -58,8 +65,24 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        image = request.files.get("faceImage", "")
-        app.logger.debug("file %s", image.filename)
+
+        image_file = request.files.get("faceImage")
+        image_name = image_file.filename
+        app.logger.debug("name of file %s", image_name)
+
+        if image_file and allowed_file(image_file.filename):
+            filename = secure_filename(image_file.filename)
+            image_file.save(os.path.join(INPUT_DIR, filename))
+
+            image_data = {
+                "file_name": filename,
+                "path": os.path.join(INPUT_DIR, filename),
+                "is_cover": False
+            }
+
+            og_file_id = db.input_image.insert_one(image_data)
+            app.logger.debug('adding image to collection: %s', og_file_id)
+
 
 
         # im = Image.open(image)
