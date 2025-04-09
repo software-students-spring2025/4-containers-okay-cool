@@ -49,26 +49,6 @@ def create_app():
 
         return render_template("index.html")
     
-    @app.route("/upload")
-    def upload():
-        """
-        Route for the upload page.
-        Returns:
-            rendered template (str): The rendered HTML template.
-        """
-
-        return render_template("upload.html")
-    
-    @app.route("/capture")
-    def capture():
-        """
-        Route for the capture page.
-        Returns:
-            rendered template (str): The rendered HTML template.
-        """
-
-        return render_template("capture.html")
-    
     @app.route("/final_image", methods = ["POST"])
     def final_image():
         """
@@ -96,7 +76,7 @@ def create_app():
         # TODO: then fetch image and id and pass to ml client
         # TODO: add new image to separate collection with id of original 
         # TODO: pass new image to output page to display
-        return render_template("output.html") #, new_image)
+        return render_template("index.html") #, new_image)
     
 
     @app.errorhandler(Exception)
