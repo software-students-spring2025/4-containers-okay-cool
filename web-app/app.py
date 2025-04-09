@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
 from werkzeug.utils import secure_filename
+import gridfs
 
 load_dotenv()  # load environment variables from .env file
 
@@ -26,6 +27,8 @@ def create_app():
 
     cxn = pymongo.MongoClient(os.getenv("MONGO_URI"))
     db = cxn[os.getenv("MONGO_DBNAME")]
+    bucket = gridfs.GridFSBucket(db, bucket_name="input_images")
+
 
     try:
         cxn.admin.command("ping")
@@ -70,19 +73,6 @@ def create_app():
         image_name = image_file.filename
         app.logger.debug("name of file %s", image_name)
 
-        if image_file and allowed_file(image_file.filename):
-            filename = secure_filename(image_file.filename)
-            image_file.save(os.path.join(INPUT_DIR, filename))
-
-            image_data = {
-                "file_name": filename,
-                "path": os.path.join(INPUT_DIR, filename),
-                "is_cover": False
-            }
-
-            og_file_id = db.input_image.insert_one(image_data)
-            app.logger.debug('adding image to collection: %s', og_file_id)
-
         # see if they have custom image
         cover_image = request.files.get("coverImage")
         if cover_image and allowed_file(cover_image.filename):
@@ -90,14 +80,26 @@ def create_app():
             cover_path = os.path.join(INPUT_DIR, filename)
             cover_image.save(cover_path)
 
-            add_cover = db.input_image.update_one({"_id": og_file_id}, {"$set": {"cover_path": cover_path}})
-            app.logger.debug('adding cover_file path to image: %s', add_cover)
+        if image_file and allowed_file(image_file.filename):
+            filename = secure_filename(image_file.filename)
+            image_file.save(os.path.join(INPUT_DIR, filename)) # Saves image to shared-images/input
+
+            # Upload the image file to MongoDB GridFS
+            image_file.seek(0)  # Reset the file pointer to the start of the file
+            file_id = bucket.upload_from_stream(filename, image_file.stream)  # Use the stream directly
+
+            # Log the GridFS file ID for debugging
+            app.logger.debug(f'Image uploaded to MongoDB GridFS with file_id: {file_id}')
+
+            # Optionally, you can fetch and log file metadata to confirm
+            gridfs_file = bucket.get(file_id)
+            app.logger.debug(f'File metadata from GridFS: {gridfs_file}')
+
 
         # TODO: then fetch image and id and pass to ml client
-        image = db.input_image.find_one({"_id": og_file_id})
         # TODO: add new image to separate collection with id of original 
         # TODO: pass new image to output page to display
-        return render_template("index.html", {'output_path': image["path"], "success": True})
+        return render_template("index.html") #, {'output_path': image["path"], "success": True})
     
 
     @app.errorhandler(Exception)
