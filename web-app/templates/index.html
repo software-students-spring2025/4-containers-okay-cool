@@ -1,88 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Face Blocker</title>
-        <style>
-            #container {
-                margin: 0px auto;
-                width: 500px;
-                height: 375px;
-                border: 10px #333 solid;
-            }
-            #videoElement {
-                width: 500px;
-                height: 375px;
-                background-color: #666;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Software Engineering Project 4</h1>
-        <h2>Redact your Face</h2>
-        <div id="container">
-            <video autoplay="true" id="videoElement"></video>
-            <canvas id="canvasElement" style="display: none;"></canvas>
-            <img id="photoElement" style="display: none;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Face Blocker</title>
+</head>
+
+<body class="bg-gray-50">
+
+{% block content %}
+<div class="flex justify-center items-center min-h-screen py-8">
+  <div class="bg-white shadow-lg rounded-lg p-8 space-y-6 w-full max-w-3xl">
+
+    <h1 class="text-4xl font-bold text-center text-gray-800">Face Blocker</h1>
+    <p class="text-center text-gray-600">Capture or upload a photo to redact faces.</p>
+
+    <!-- side-by-side webcam and captured photo -->
+    <div class="flex gap-4">
+      <!-- Webcam -->
+      <div class="flex-1 rounded-lg overflow-hidden border-4 border-gray-300 bg-gray-700">
+        <video id="videoElement" autoplay class="w-full aspect-video rounded-md"></video>
+        <canvas id="canvasElement" style="display: none;"></canvas>
+      </div>
+
+      <!-- captured Photo -->
+      <div class="flex-1 rounded-lg overflow-hidden border-4 border-gray-300">
+        <img id="photoElement"
+             class="w-full aspect-video object-cover bg-black rounded-md"
+             src=""
+             alt="Captured"
+        />
+      </div>
+    </div>
+
+
+    <!-- upload & capture Row -->
+    <form method="POST" action="/" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Upload photo to block out</label>
+        <div class="flex space-x-2">
+          <input id="faceImageInput" type="file" name="faceImage" accept="image/png, image/jpeg" required
+                 class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"/>
+          <span class="text-xl text-gray-500 font-medium relative top-1.5">or</span>
+          <button id="captureButton"
+                  type="button"
+                  class="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md">
+            Capture Photo
+          </button>
         </div>
-        <button id="captureButton">Capture Photo</button>
+      </div>
 
-        <script>
-            const video = document.getElementById('videoElement');
-            const canvasElement = document.getElementById('canvasElement');
-            const photoElement = document.getElementById('photoElement');
-            const captureButton = document.getElementById('captureButton');
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Optional: Cover your face with a custom image</label>
+        <input type="file" name="coverImage" accept="image/png, image/jpeg"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"/>
+      </div>
 
+      <input type="submit" value="Redact Your Image"
+             class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+    </form>
 
-            if (navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: true })
-                    .then(function (stream) {
-                    video.srcObject = stream;
-                    })
-                    .catch(function (err0r) {
-                    console.log("Something went wrong!");
-                });
-            }
+    <!-- redacted image -->
+    <h2 class="text-lg font-semibold text-gray-800 mt-4">Redacted Image:</h2>
+    <img id="photoElement" style="display: none;" class="rounded-lg border mt-2 shadow-md"/>
 
-            function capturePhoto() {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                canvasElement.getContext('2d').drawImage(videoElement, 0, 0);
-                const photoDataUrl = canvasElement.toDataURL('image/jpeg');
-                photoElement.src = photoDataUrl;
-                photoElement.style.display = 'block';
+    {% if success %}
+      <p class="text-green-600 mt-4 text-center">Image uploaded successfully!</p>
+    {% endif %}
+  </div>
+</div>
 
-                const imageFile = photoElement.files[0]; // Get the image file from an input element
-                const formData = new FormData();
-                formData.append('myFile', imageFile); // Append the image file to FormData
+<script>
+  const video = document.getElementById('videoElement');
+  const canvasElement = document.getElementById('canvasElement');
+  const photoElement = document.getElementById('photoElement');
+  const captureButton = document.getElementById('captureButton');
 
-                fetch("{{ url_for('final_image') }}", {
-                method: 'POST',
-                body: formData,
-                })
-                .then(response => {
-                if (response.ok) {
-                    console.log('Image uploaded successfully');
-                } else {
-                    console.error('Image upload failed');
-                }
-                })
-                .catch(error => {
-                console.error('Error:', error);
-                });
+  if (navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(function (stream) {
+        video.srcObject = stream;
+      })
+      .catch(function (err) {
+        console.log("Something went wrong!", err);
+      });
+  }
 
-            }
+  function capturePhoto() {
+    canvasElement.width = video.videoWidth;
+    canvasElement.height = video.videoHeight;
+    canvasElement.getContext('2d').drawImage(video, 0, 0);
+    const photoDataUrl = canvasElement.toDataURL('image/jpeg');
+    photoElement.src = photoDataUrl;
+    photoElement.style.display = 'block';
 
-            captureButton.addEventListener('click', capturePhoto);
-        </script>
-        <h2>Upload Photo</h2>
-        <form method="POST" action="{{ url_for('final_image') }}" enctype=multipart/form-data>
-            Upload photo to block out: <input type="file" name="faceImage" accept="image/png, image/jpeg" required><br>
-            Upload custom photo to cover the faces (optional): <input type="file" name="coverImage" accept="image/png, image/jpeg" ><br>
-            <input type="submit" value=Upload>
-        </form>
-        <h2>Redacted Image:</h2>
-        <img id="photoElement" style="display: none;">
-    </body>
+    const formData = new FormData();
+    formData.append('myFile', photoDataUrl);
+
+    fetch("/", {
+      method: 'POST',
+      body: formData,
+    })
+    .then(response => {
+      if (response.ok) {
+        console.log('Image uploaded successfully');
+      } else {
+        console.error('Image upload failed');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+    });
+  }
+
+  captureButton.addEventListener('click', capturePhoto);
+
+  // JS to show uploaded image in preview box
+  const faceImageInput = document.getElementById('faceImageInput');
+  faceImageInput.addEventListener('change', function () {
+    const file = this.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        photoElement.src = e.target.result;
+        photoElement.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+</script>
+{% endblock %}
+</body>
 </html>
