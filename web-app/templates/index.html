@@ -3,14 +3,86 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
         <title>Face Blocker</title>
+        <style>
+            #container {
+                margin: 0px auto;
+                width: 500px;
+                height: 375px;
+                border: 10px #333 solid;
+            }
+            #videoElement {
+                width: 500px;
+                height: 375px;
+                background-color: #666;
+            }
+        </style>
     </head>
     <body>
-        {% extends 'base.html'%}
-        {% block content %}
-        <a href="{{ url_for('upload') }}">Upload Photo</a>
-        <a href="{{ url_for('capture') }}">Capture Photo</a>
-        {% endblock %}
+        <h1>Software Engineering Project 4</h1>
+        <h2>Redact your Face</h2>
+        <div id="container">
+            <video autoplay="true" id="videoElement"></video>
+            <canvas id="canvasElement" style="display: none;"></canvas>
+            <img id="photoElement" style="display: none;">
+        </div>
+        <button id="captureButton">Capture Photo</button>
+
+        <script>
+            const video = document.getElementById('videoElement');
+            const canvasElement = document.getElementById('canvasElement');
+            const photoElement = document.getElementById('photoElement');
+            const captureButton = document.getElementById('captureButton');
+
+
+            if (navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function (stream) {
+                    video.srcObject = stream;
+                    })
+                    .catch(function (err0r) {
+                    console.log("Something went wrong!");
+                });
+            }
+
+            function capturePhoto() {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                canvasElement.getContext('2d').drawImage(videoElement, 0, 0);
+                const photoDataUrl = canvasElement.toDataURL('image/jpeg');
+                photoElement.src = photoDataUrl;
+                photoElement.style.display = 'block';
+
+                const imageFile = photoElement.files[0]; // Get the image file from an input element
+                const formData = new FormData();
+                formData.append('myFile', imageFile); // Append the image file to FormData
+
+                fetch("{{ url_for('final_image') }}", {
+                method: 'POST',
+                body: formData,
+                })
+                .then(response => {
+                if (response.ok) {
+                    console.log('Image uploaded successfully');
+                } else {
+                    console.error('Image upload failed');
+                }
+                })
+                .catch(error => {
+                console.error('Error:', error);
+                });
+
+            }
+
+            captureButton.addEventListener('click', capturePhoto);
+        </script>
+        <h2>Upload Photo</h2>
+        <form method="POST" action="{{ url_for('final_image') }}" enctype=multipart/form-data>
+            Upload photo to block out: <input type="file" name="faceImage" accept="image/png, image/jpeg" required><br>
+            Upload custom photo to cover the faces (optional): <input type="file" name="coverImage" accept="image/png, image/jpeg" ><br>
+            <input type="submit" value=Upload>
+        </form>
+        <h2>Redacted Image:</h2>
+        <img id="photoElement" style="display: none;">
     </body>
 </html>
