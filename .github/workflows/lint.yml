@@ -20,9 +20,9 @@ jobs:
           cd ${{ matrix.subdir }}
           python -m pip install --upgrade pip
           python -m pip install pipenv
-          pipenv install -r requirements.txt
           pipenv sync --dev --python $(which python)
           pipenv shell --fancy --python $(which python)
+          pipenv install -r requirements.txt
       - name: Lint with pylint
         if: ${{ hashFiles(format('{0}/**/*.py', matrix.subdir)) != '' }}
         # you may set pylint to ignore any files or dependencies that make no sense to lint
