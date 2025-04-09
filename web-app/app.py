@@ -1,12 +1,10 @@
 """This is a Flask Web App"""
 
 import os
-import io
 import logging
 from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
-from PIL import Image
 from werkzeug.utils import secure_filename
 
 load_dotenv()  # load environment variables from .env file
