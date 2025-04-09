@@ -55,7 +55,7 @@ class FaceRedactionClient:
         Args:
             mongo_uri: MongoDB connection URI
             db_name: MongoDB database name
-            redaction_image_path: Path to the image to use for redacting faces. 
+            redaction_image_path: Path to the image to use for redacting faces.
                 If None, black rectangles are used.
         """
         self.detector = MTCNN()
@@ -301,8 +301,8 @@ class FaceRedactionClient:
                     img_redacted, num_faces = self.redact_faces(img, faces)
 
                     # Encode the image to bytes
-                    is_jpg = record.get("filename", "").lower().endswith(
-                        (".jpg", ".jpeg")
+                    is_jpg = (
+                        record.get("filename", "").lower().endswith((".jpg", ".jpeg"))
                     )
                     ext = ".jpg" if is_jpg else ".png"
                     success, redacted_bytes = cv2.imencode(ext, img_redacted)
