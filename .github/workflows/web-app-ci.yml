@@ -1,11 +1,6 @@
 name: Web-App-CI
+on: [push, pull_request]
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  push:
-    branches:
-      - main
 
 jobs:
   test-web-app:
