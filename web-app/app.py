@@ -1,14 +1,17 @@
 """This is a Flask Web App"""
 
 import os
-import io
 import logging
-from flask import Flask, render_template, request #, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, dotenv_values
 import pymongo
-from PIL import Image
+from werkzeug.utils import secure_filename
 
 load_dotenv()  # load environment variables from .env file
+
+INPUT_DIR = os.getenv("INPUT_DIR", "images/input")
+INPUT_DIR = os.getenv("OUTPUT_DIR", "images/output")
+
 
 def create_app():
     """
@@ -49,6 +52,10 @@ def create_app():
 
         return render_template("index.html")
     
+
+    def allowed_file(filename):
+        return '.' in filename and filename.rsplit('.', 1)[1].lower() in ["jpg", "png"]
+
     @app.route("/final_image", methods = ["POST"])
     def final_image():
         """
@@ -58,25 +65,39 @@ def create_app():
         Returns:
             rendered template (str): The rendered HTML template.
         """
-        image = request.form.get("myFile", "")
 
-        im = Image.open(image)
+        image_file = request.files.get("faceImage")
+        image_name = image_file.filename
+        app.logger.debug("name of file %s", image_name)
 
-        image_bytes = io.BytesIO()
-        im.save(image_bytes, format='JPEG')
+        if image_file and allowed_file(image_file.filename):
+            filename = secure_filename(image_file.filename)
+            image_file.save(os.path.join(INPUT_DIR, filename))
 
-        image = {
-            'data': image_bytes.getvalue()
-        }
+            image_data = {
+                "file_name": filename,
+                "path": os.path.join(INPUT_DIR, filename),
+                "is_cover": False
+            }
 
-        # add image to collection of new images
-        image_id = db.user_image.insert_one(image).inserted_id
-        app.logger.debug('adding image to collection: %s', image_id)
+            og_file_id = db.input_image.insert_one(image_data)
+            app.logger.debug('adding image to collection: %s', og_file_id)
+
+        # see if they have custom image
+        cover_image = request.files.get("coverImage")
+        if cover_image and allowed_file(cover_image.filename):
+            filename = secure_filename(cover_image.filename)
+            cover_path = os.path.join(INPUT_DIR, filename)
+            cover_image.save(cover_path)
+
+            add_cover = db.input_image.update_one({"_id": og_file_id}, {"$set": {"cover_path": cover_path}})
+            app.logger.debug('adding cover_file path to image: %s', add_cover)
 
         # TODO: then fetch image and id and pass to ml client
+        image = db.input_image.find_one({"_id": og_file_id})
         # TODO: add new image to separate collection with id of original 
         # TODO: pass new image to output page to display
-        return render_template("index.html") #, new_image)
+        return render_template("index.html", {'output_path': image["path"], "success": True})
     
 
     @app.errorhandler(Exception)
