@@ -4,7 +4,7 @@
 
 # Face Blocker
 ## Description
-Face Blocker is a web app that allows a user to generate a version of any photo with the face blocked out. This system integrates a machine learning system that takes the image, detects how many faces are in the image, and produces an output image with all of the faces blocked out. Face Blocker can even use a custom photo the user provides to censor the faces. This system also integrates a MongoDB database using GridFS that facilitates sharing of images between the two other containers. 
+Face Blocker is a Flask web app that allows a user to generate a version of any photo with the face blocked out. This system integrates a machine learning system that takes the image, detects how many faces are in the image, and produces an output image with all of the faces blocked out. Face Blocker can even use a custom photo the user provides to censor the faces. This system also integrates a MongoDB database using GridFS that facilitates sharing of images between the two other containers. Face Blocker integrates its three systems using docker containers. 
 
 ## Developer Instructions
 
@@ -25,8 +25,8 @@ Face Blocker is a web app that allows a user to generate a version of any photo 
 
 ## Environent variables
 Both the web app and machine learning client require ```.env``` files to function. Follow the example files below to create your own versions. It is vital to include the same fields, but insert your personal uri and database name for MongoDB.
-1. (Example ```.env``` for the web app)[web-app/.env.example]
-2. (Example ```.env``` for the machine learning client)[machine-learning-client/.env.example]
+1. [Example ```.env``` for the web app](web-app/.env.example)
+2. [Example ```.env``` for the machine learning client](machine-learning-client/.env.example)
 
 ## Authors
 * [Apollo Wyndham](https://github.com/a-wyndham1)
