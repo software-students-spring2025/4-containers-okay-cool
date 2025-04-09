@@ -73,6 +73,8 @@
 </div>
 
 <script>
+  // Global variables
+  let stream = null;
   const video = document.getElementById('videoElement');
   const canvasElement = document.getElementById('canvasElement');
   const photoElement = document.getElementById('photoElement');
@@ -82,20 +84,63 @@
   const imageForm = document.getElementById('imageForm');
 
   let capturedImageBlob = null;
+  let isProcessing = false;
 
-  // Access webcam
-  if (navigator.mediaDevices.getUserMedia) {
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(function (stream) {
+  // Function to start webcam
+  function startWebcam() {
+    if (stream) {
+      // Already have a stream
+      return Promise.resolve(stream);
+    }
+    
+    console.log("Starting webcam...");
+    return navigator.mediaDevices.getUserMedia({ video: true })
+      .then(function (newStream) {
+        stream = newStream;
         video.srcObject = stream;
+        console.log("Webcam started successfully");
+        return stream;
       })
       .catch(function (err) {
-        console.log("Something went wrong!", err);
+        console.error("Error starting webcam:", err);
+        return Promise.reject(err);
       });
   }
 
+  // Function to stop webcam
+  function stopWebcam() {
+    if (stream) {
+      console.log("Stopping webcam...");
+      stream.getTracks().forEach(track => {
+        track.stop();
+      });
+      video.srcObject = null;
+      stream = null;
+      console.log("Webcam stopped");
+    }
+  }
+
+  // Start webcam when page loads
+  startWebcam().catch(err => {
+    console.error("Failed to start webcam on page load:", err);
+  });
+
   // Capture the image from the webcam
   function capturePhoto() {
+    if (!stream) {
+      console.log("No webcam stream available, attempting to start...");
+      startWebcam()
+        .then(() => {
+          setTimeout(capturePhoto, 500); // Try again after webcam starts
+        })
+        .catch(err => {
+          console.error("Failed to start webcam for capture:", err);
+          alert("Could not access webcam. Please check permissions and try again.");
+        });
+      return;
+    }
+
+    console.log("Capturing photo...");
     canvasElement.width = video.videoWidth;
     canvasElement.height = video.videoHeight;
     canvasElement.getContext('2d').drawImage(video, 0, 0);
@@ -106,6 +151,10 @@
     // Store captured image as a blob to upload later
     canvasElement.toBlob(function(blob) {
       capturedImageBlob = blob;
+      console.log("Photo captured and stored as blob");
+      
+      // Clear any previously selected file input
+      faceImageInput.value = '';
     });
   }
 
@@ -118,21 +167,63 @@
     return result;
   }
 
+  // Add listener for the capture button
   captureButton.addEventListener('click', capturePhoto);
+
+  // Display uploaded image in the preview and clear captured image
+  faceImageInput.addEventListener('change', function () {
+    const file = this.files[0];
+    console.log("File selected:", file);
+    
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        photoElement.src = e.target.result;
+        photoElement.style.display = 'block';
+        
+        // Clear any previously captured image
+        capturedImageBlob = null;
+        console.log("File loaded into preview, cleared captured image");
+      };
+      reader.readAsDataURL(file);
+    }
+  });
 
   // When the user submits the form
   imageForm.addEventListener('submit', function (e) {
     e.preventDefault();
+    
+    if (isProcessing) {
+      console.log("Already processing an image, ignoring submission");
+      return;
+    }
+    
+    console.log("Form submitted");
 
     // Create FormData to send to Flask backend
     let formData = new FormData();
 
     // If the user uploaded an image
     const uploadedImage = faceImageInput.files[0];
+    console.log("Uploaded image:", uploadedImage);
+    
     if (uploadedImage) {
-      formData.append('faceImage', uploadedImage);
-    } else if (capturedImageBlob) {  // If no file uploaded but a captured image exists
-      formData.append('faceImage', capturedImageBlob, createRandomString(10)+'.png');
+      // Ensure the filename has a proper extension
+      let filename = uploadedImage.name;
+      if (!filename.toLowerCase().endsWith('.jpg') && 
+          !filename.toLowerCase().endsWith('.jpeg') && 
+          !filename.toLowerCase().endsWith('.png')) {
+        // Add a .jpg extension if the file doesn't have a proper image extension
+        filename = filename + '.jpg';
+        console.log("Modified filename to:", filename);
+      }
+      formData.append('faceImage', uploadedImage, filename);
+      console.log("Appended uploaded image with filename:", filename);
+    } else if (capturedImageBlob) {
+      // If no file uploaded but a captured image exists
+      const blobFilename = createRandomString(10) + '.png';
+      formData.append('faceImage', capturedImageBlob, blobFilename);
+      console.log("Appended captured image blob with filename:", blobFilename);
     } else {
       // Display an alert if no image was provided (either uploaded or captured)
       alert("Please upload or capture a photo!");
@@ -142,74 +233,108 @@
     // Optionally add a custom cover image
     const coverImage = imageForm.querySelector('input[name="coverImage"]').files[0];
     if (coverImage) {
-      formData.append('coverImage', coverImage, createRandomString(10)+'_cover.png');
+      const coverFilename = createRandomString(10)+'_cover.png';
+      formData.append('coverImage', coverImage, coverFilename);
+      console.log("Appended cover image with filename:", coverFilename);
     }
+
+    // Show processing status
+    document.getElementById('uploadStatus').innerHTML = 
+      `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
+         <p>Uploading your image...</p>
+       </div>`;
+    
+    // Disable form elements during processing
+    isProcessing = true;
+    redactButton.disabled = true;
+    redactButton.classList.add('opacity-50', 'cursor-not-allowed');
 
     // Send the POST request to Flask with the image data
     fetch('{{ url_for("final_image") }}', {
       method: 'POST',
       body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+      console.log("Upload response status:", response.status);
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+      return response.json();
+    })
     .then(data => {
+      console.log("Upload response data:", data);
       if (data.success) {
         document.getElementById('uploadStatus').innerHTML = 
-          `<div class="alert alert-info">
-            <p>${data.message}</p>
-            <div class="progress">
-              <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                   role="progressbar" style="width: 100%"></div>
-            </div>
-          </div>`;
+          `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
+             <p>${data.message}</p>
+           </div>`;
         
         // Start polling for status
         pollForStatus(data.file_id);
       } else {
         document.getElementById('uploadStatus').innerHTML = 
-          `<div class="alert alert-danger">${data.error}</div>`;
+          `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+             ${data.error}
+           </div>`;
+        
+        // Re-enable form elements
+        isProcessing = false;
+        redactButton.disabled = false;
+        redactButton.classList.remove('opacity-50', 'cursor-not-allowed');
       }
     })
     .catch(error => {
       console.error('Error during image upload and redaction:', error);
       document.getElementById('uploadStatus').innerHTML = 
-        `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+           Error: ${error.message}
+         </div>`;
+      
+      // Re-enable form elements
+      isProcessing = false;
+      redactButton.disabled = false;
+      redactButton.classList.remove('opacity-50', 'cursor-not-allowed');
     });
   });
 
-  // Display uploaded image in the preview
-  faceImageInput.addEventListener('change', function () {
-    const file = this.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        photoElement.src = e.target.result;
-        photoElement.style.display = 'block';
-      };
-      reader.readAsDataURL(file);
-    }
-  });
-
-  // Add this function to poll for status
   function pollForStatus(fileId) {
+    console.log("Starting to poll status for fileId:", fileId);
+    
     const checkStatus = () => {
+      console.log("Checking status for fileId:", fileId);
       fetch(`/check_status/${fileId}`)
-        .then(response => response.json())
+        .then(response => {
+          console.log("Status check response:", response.status);
+          if (!response.ok) {
+            throw new Error(`Status check failed: ${response.status}`);
+          }
+          return response.json();
+        })
         .then(data => {
+          console.log("Status data received:", data);
           if (data.status === 'completed') {
             // Processing finished - redirect to results page with the processing record ID
+            console.log("Processing completed, redirecting to:", `/get_image/${data.file_id}`);
             window.location.href = `/get_image/${data.file_id}`;
           } else if (data.status === 'failed') {
             // Processing failed
+            console.error("Processing failed:", data.error);
             document.getElementById('uploadStatus').innerHTML = 
-              `<div class="alert alert-danger">
-                <p>Processing failed: ${data.error || 'Unknown error'}</p>
-              </div>`;
+              `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+                 Processing failed: ${data.error || 'Unknown error'}
+               </div>`;
+            
+            // Re-enable form elements
+            isProcessing = false;
+            redactButton.disabled = false;
+            redactButton.classList.remove('opacity-50', 'cursor-not-allowed');
           } else {
             // Still processing, update status message
+            console.log("Still processing, status:", data.status);
             document.getElementById('uploadStatus').innerHTML = 
-              `<div class="alert alert-info">
-                <p>Processing your image... Status: ${data.status}</p>
-              </div>`;
+              `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
+                 Processing your image... Status: ${data.status}
+               </div>`;
             // Continue polling
             setTimeout(checkStatus, 1000); // Check every second
           }
@@ -217,7 +342,9 @@
         .catch(error => {
           console.error('Error checking status:', error);
           document.getElementById('uploadStatus').innerHTML = 
-            `<div class="alert alert-danger">Error checking status: ${error.message}</div>`;
+            `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+               Error checking status: ${error.message}
+             </div>`;
           // Try again after a delay
           setTimeout(checkStatus, 2000);
         });
@@ -227,7 +354,12 @@
     checkStatus();
   }
 
+  // Clean up resources when page unloads
+  window.addEventListener('beforeunload', function() {
+    stopWebcam();
+  });
 </script>
 {% endblock %}
 </body>
 </html>
+
