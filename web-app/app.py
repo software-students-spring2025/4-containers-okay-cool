@@ -90,6 +90,9 @@ def create_app():
             cover_path = os.path.join(INPUT_DIR, filename)
             cover_image.save(cover_path)
 
+            add_cover = db.input_image.update_one({"_id": og_file_id}, {"$set": {"cover_path": cover_path}})
+            app.logger.debug('adding cover_file path to image: %s', add_cover)
+
         # TODO: then fetch image and id and pass to ml client
         # TODO: add new image to separate collection with id of original 
         # TODO: pass new image to output page to display
