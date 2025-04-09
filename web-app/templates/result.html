@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h2>Face Redaction Results</h2>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <img src="{{ url_for('image_data', file_id=image_id) }}" class="img-fluid rounded" alt="Redacted image">
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Analysis Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>File:</strong> {{ filename }}</p>
+                            <p><strong>Faces Detected:</strong> {{ num_faces }}</p>
+                            <p><strong>Processing Time:</strong> {{ "%.2f"|format(processing_time) }} seconds</p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <a href="{{ url_for('home') }}" class="btn btn-primary">Process Another Image</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

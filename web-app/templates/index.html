@@ -67,6 +67,8 @@
     {% if success %}
       <p class="text-green-600 mt-4 text-center">Image uploaded successfully!</p>
     {% endif %}
+
+    <div id="uploadStatus"></div>
   </div>
 </div>
 
@@ -150,10 +152,27 @@
     })
     .then(response => response.json())
     .then(data => {
-
+      if (data.success) {
+        document.getElementById('uploadStatus').innerHTML = 
+          `<div class="alert alert-info">
+            <p>${data.message}</p>
+            <div class="progress">
+              <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                   role="progressbar" style="width: 100%"></div>
+            </div>
+          </div>`;
+        
+        // Start polling for status
+        pollForStatus(data.file_id);
+      } else {
+        document.getElementById('uploadStatus').innerHTML = 
+          `<div class="alert alert-danger">${data.error}</div>`;
+      }
     })
     .catch(error => {
       console.error('Error during image upload and redaction:', error);
+      document.getElementById('uploadStatus').innerHTML = 
+        `<div class="alert alert-danger">Error: ${error.message}</div>`;
     });
   });
 
@@ -169,6 +188,37 @@
       reader.readAsDataURL(file);
     }
   });
+
+  // Add this function to poll for status
+  function pollForStatus(fileId) {
+    const checkStatus = () => {
+      fetch(`/check_status/${fileId}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'completed') {
+            // Processing finished - redirect to results page
+            window.location.href = `/get_image/${data.file_id}`;
+          } else if (data.status === 'failed') {
+            // Processing failed
+            document.getElementById('uploadStatus').innerHTML = 
+              `<div class="alert alert-danger">
+                <p>Processing failed: ${data.error || 'Unknown error'}</p>
+              </div>`;
+          } else {
+            // Still processing, continue polling
+            setTimeout(checkStatus, 1000); // Check every second
+          }
+        })
+        .catch(error => {
+          console.error('Error checking status:', error);
+          document.getElementById('uploadStatus').innerHTML = 
+            `<div class="alert alert-danger">Error checking status: ${error.message}</div>`;
+        });
+    };
+    
+    // Start polling
+    checkStatus();
+  }
 
 </script>
 {% endblock %}
