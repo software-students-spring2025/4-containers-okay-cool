@@ -12,10 +12,17 @@ services:
       - FLASK_APP=app.py
       - FLASK_ENV=development
       - FLASK_PORT=5000
+      - INPUT_DIR=images/input
+      - OUTPUT_DIR=images/output
+      - ARCHIVE_DIR=images/archive
     env_file:
       - ./web-app/.env
+    volumes:
+      - ./shared-images:/app/images
+      - ./machine-learning-client:/machine-learning-client
     depends_on:
       - mongodb
+      - face-redaction-client
   
   mongodb:
     environment:
@@ -42,6 +49,7 @@ services:
       - ./machine-learning-client/.env
     volumes:
       - ./shared-images:/app/images
+      - ./machine-learning-client:/machine-learning-client
     depends_on:
       - mongodb
 
