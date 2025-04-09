@@ -10,7 +10,6 @@ import os
 import time
 import datetime
 import logging
-from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 
 import cv2
@@ -19,6 +18,9 @@ from mtcnn import MTCNN
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
+import gridfs
+import io
+from bson.objectid import ObjectId
 
 # Configure logging
 logging.basicConfig(
@@ -35,18 +37,12 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@mongodb:27017")
 MONGO_DBNAME = os.getenv("MONGO_DBNAME", "okaycooldb")
 
 # Image processing configuration
-INPUT_DIR = os.getenv("INPUT_DIR", "images/input")
-OUTPUT_DIR = os.getenv("OUTPUT_DIR", "images/output")
-ARCHIVE_DIR = os.getenv("ARCHIVE_DIR", "images/archive")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))  # seconds
 
 # Redaction configuration
 REDACTION_IMAGE = os.getenv("REDACTION_IMAGE", None)  # Path to image used for redaction
 
-# Create directories if they don't exist
-Path(INPUT_DIR).mkdir(parents=True, exist_ok=True)
-Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-Path(ARCHIVE_DIR).mkdir(parents=True, exist_ok=True)
+# Remove filesystem directory creation as we no longer need them
 
 
 class FaceRedactionClient:
@@ -67,6 +63,9 @@ class FaceRedactionClient:
         self.mongo_client = None
         self.db = None
         self.collection = None
+        self.processing_collection = None
+        self.input_bucket = None
+        self.output_bucket = None
         self.mongo_available = False
         
         try:
@@ -75,10 +74,17 @@ class FaceRedactionClient:
             self.mongo_client.admin.command('ping')
             self.db = self.mongo_client[db_name]
             self.collection = self.db.face_detection_results
+            self.processing_collection = self.db.image_processing
+            
+            # Set up GridFS buckets
+            self.input_bucket = gridfs.GridFSBucket(self.db, bucket_name="input_images")
+            self.output_bucket = gridfs.GridFSBucket(self.db, bucket_name="output_images")
+            
             self.mongo_available = True
             logger.info("Successfully connected to MongoDB")
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-            logger.warning("MongoDB connection failed: %s. Continuing without database functionality.", str(e))
+            logger.warning("MongoDB connection failed: %s. Exiting as GridFS is required.", str(e))
+            raise
         
         # Load redaction image if provided
         self.redaction_image = None
@@ -87,133 +93,97 @@ class FaceRedactionClient:
         if redaction_image_path:
             try:
                 self.redaction_image = cv2.imread(redaction_image_path, cv2.IMREAD_UNCHANGED)
-                if self.redaction_image is None:
-                    logger.error("Failed to load redaction image: %s. Using rectangle redaction instead.", redaction_image_path)
-                else:
-                    logger.info("Loaded redaction image: %s", redaction_image_path)
+                if self.redaction_image is not None:
+                    logger.info("Using custom redaction image: %s", redaction_image_path)
                     self.redaction_method = "image"
+                else:
+                    logger.warning("Could not load redaction image: %s. Using black rectangles instead.", redaction_image_path)
             except Exception as e:
-                logger.error("Error loading redaction image: %s. Using rectangle redaction instead.", str(e))
-        
-        logger.info("Face Redaction Client initialized with method: %s", self.redaction_method)
+                logger.warning("Error loading redaction image: %s. Using black rectangles instead.", str(e))
 
-    def detect_faces(self, img_rgb: np.ndarray) -> List[Dict[str, Any]]:
+    def detect_faces(self, image: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Detect faces in an RGB image using MTCNN.
+        Detect faces in an image using MTCNN.
 
         Args:
-            img_rgb: RGB image as numpy array
+            image: The image to detect faces in (RGB format)
 
         Returns:
-            List of detected faces with their bounding boxes and landmarks
+            A list of dictionaries containing face detection results
         """
-        faces = self.detector.detect_faces(img_rgb)
+        faces = self.detector.detect_faces(image)
         return faces
 
-    def apply_rectangle_redaction(
-        self, image: np.ndarray, face: Dict[str, Any], color: Tuple[int, int, int] = (0, 0, 0)
-    ) -> np.ndarray:
+    def redact_faces(self, image: np.ndarray, faces: List[Dict[str, Any]]) -> Tuple[np.ndarray, int]:
         """
-        Redact a face by drawing a filled rectangle over it.
-        
-        Args:
-            image: Original image
-            face: Face detection result with bounding box
-            color: BGR color tuple for the redaction rectangle
-            
-        Returns:
-            Image with face redacted by rectangle
-        """
-        x, y, w, h = face["box"]
-        return cv2.rectangle(image, (x, y), (x + w, y + h), color, -1)  # -1 for fill
-
-    def apply_image_redaction(
-        self, image: np.ndarray, face: Dict[str, Any], redaction_img: np.ndarray
-    ) -> np.ndarray:
-        """
-        Redact a face by placing another image over it.
-        
-        Args:
-            image: Original image
-            face: Face detection result with bounding box
-            redaction_img: Image to place over the face
-            
-        Returns:
-            Image with face redacted by overlaying another image
-        """
-        x, y, w, h = face["box"]
-        result = image.copy()
-        
-        # Resize redaction image to match face size
-        overlay = cv2.resize(redaction_img, (w, h))
-        
-        # Handle both 3-channel (BGR) and 4-channel (BGRA) redaction images
-        if overlay.shape[2] == 4:  # With alpha channel
-            # Get the alpha channel
-            alpha = overlay[:, :, 3] / 255.0
-            
-            # Extract RGB channels from overlay
-            overlay_rgb = overlay[:, :, :3]
-            
-            # Apply alpha blending
-            for c in range(3):  # Apply for each color channel
-                result[y:y+h, x:x+w, c] = (
-                    overlay_rgb[:, :, c] * alpha + 
-                    result[y:y+h, x:x+w, c] * (1 - alpha)
-                ).astype(np.uint8)
-        else:  # Without alpha channel (BGR)
-            result[y:y+h, x:x+w] = overlay
-            
-        return result
-
-    def redact_faces(
-        self, img: np.ndarray, faces: List[Dict[str, Any]]
-    ) -> Tuple[np.ndarray, int]:
-        """
-        Redact faces in the image using the configured method.
+        Redact faces in an image.
 
         Args:
-            img: Original image as numpy array
-            faces: List of detected faces with their bounding boxes
+            image: The image to redact faces in (BGR format)
+            faces: A list of dictionaries containing face detection results
 
         Returns:
-            Tuple of (redacted image, number of faces)
+            The redacted image and the number of faces redacted
         """
-        if not faces:
-            return img.copy(), 0
-            
-        img_with_redactions = img.copy()
-        num_faces = len(faces)
+        redacted_image = image.copy()
+        num_faces = 0
 
         for face in faces:
-            # Apply the appropriate redaction method
+            # Get the bounding box
+            x, y, width, height = face["box"]
+            
+            # Fix negative coordinates (sometimes MTCNN returns negative values)
+            x = max(0, x)
+            y = max(0, y)
+            
+            # Get the confidence score
+            confidence = face["confidence"]
+            
+            # Skip low confidence detections
+            if confidence < 0.9:
+                continue
+                
+            num_faces += 1
+            
             if self.redaction_method == "image" and self.redaction_image is not None:
-                img_with_redactions = self.apply_image_redaction(
-                    img_with_redactions, face, self.redaction_image
-                )
-            else:  # Default to rectangle redaction
-                img_with_redactions = self.apply_rectangle_redaction(img_with_redactions, face)
+                # Resize the redaction image to fit the face
+                redaction_resized = cv2.resize(self.redaction_image, (width, height))
+                
+                # If the redaction image has an alpha channel, use it for blending
+                if redaction_resized.shape[-1] == 4:
+                    # Split the redaction image into color and alpha channels
+                    redaction_rgb = redaction_resized[:, :, 0:3]
+                    redaction_alpha = redaction_resized[:, :, 3] / 255.0
+                    
+                    # Extract the region of interest from the original image
+                    roi = redacted_image[y:y+height, x:x+width]
+                    
+                    # Blend based on alpha
+                    for c in range(0, 3):
+                        roi[:, :, c] = roi[:, :, c] * (1 - redaction_alpha) + redaction_rgb[:, :, c] * redaction_alpha
+                    
+                    # Put the blended ROI back into the image
+                    redacted_image[y:y+height, x:x+width] = roi
+                else:
+                    # If no alpha channel, just overlay the redaction image
+                    redacted_image[y:y+height, x:x+width] = redaction_resized
+            else:
+                # Draw a filled black rectangle over the face
+                cv2.rectangle(redacted_image, (x, y), (x+width, y+height), (0, 0, 0), -1)
+        
+        return redacted_image, num_faces
 
-        return img_with_redactions, num_faces
-
-    def store_result(
-        self,
-        filename: str,
-        num_faces: int,
-        confidence_scores: List[float],
-        processing_time: float,
-    ) -> None:
+    def store_result(self, filename: str, num_faces: int, confidence_scores: List[float], processing_time: float) -> None:
         """
-        Store face detection result in MongoDB.
+        Store the face detection result in MongoDB.
 
         Args:
-            filename: Name of the processed image file
-            num_faces: Number of faces detected
-            confidence_scores: Confidence scores for each detected face
-            processing_time: Time taken to process the image in seconds
+            filename: The name of the processed file
+            num_faces: The number of faces detected
+            confidence_scores: The confidence scores for each face
+            processing_time: The time taken to process the image in seconds
         """
         if not self.mongo_available:
-            logger.info("MongoDB not available. Skipping data storage for %s", filename)
             return
             
         try:
@@ -222,96 +192,175 @@ class FaceRedactionClient:
                 "timestamp": datetime.datetime.now(),
                 "num_faces": num_faces,
                 "confidence_scores": confidence_scores,
-                "processing_time": processing_time,
-                "redaction_method": self.redaction_method,
+                "processing_time": processing_time
             }
+            
             self.collection.insert_one(result)
-            logger.info("Stored result for %s: %s faces detected", filename, num_faces)
+            logger.debug("Stored detection result in MongoDB: %s faces in %s", num_faces, filename)
         except Exception as e:
-            logger.error("Failed to store result in MongoDB: %s", str(e))
+            logger.error("Failed to store detection result in MongoDB: %s", str(e))
 
-    def process_image(self, image_path: str) -> Optional[str]:
-        """
-        Process an image by detecting and redacting faces.
+    # Remove process_image method as it relies on filesystem
 
-        Args:
-            image_path: Path to the input image
-
-        Returns:
-            Path to the redacted image or None if processing failed
-        """
+    def process_gridfs_images(self) -> None:
+        """Process any pending images in GridFS."""
         try:
-            start_time = time.time()
-
-            # Read the image
-            img = cv2.imread(image_path)
-            if img is None:
-                logger.error("Failed to read image: %s", image_path)
-                return None
-
-            # Convert to RGB for MTCNN
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-            # Detect faces
-            faces = self.detect_faces(img_rgb)
-
-            # Redact faces
-            img_redacted, num_faces = self.redact_faces(img, faces)
-
-            # Generate output filename
-            base_name = os.path.basename(image_path)
-            name, ext = os.path.splitext(base_name)
-            output_path = os.path.join(OUTPUT_DIR, f"{name}_redacted{ext}")
-            archive_path = os.path.join(ARCHIVE_DIR, base_name)
-
-            # Save redacted image
-            cv2.imwrite(output_path, img_redacted)
-
-            # Move original image to archive
-            os.rename(image_path, archive_path)
-
-            # Calculate processing time
-            processing_time = time.time() - start_time
-
-            # Extract confidence scores
-            confidence_scores = [face["confidence"] for face in faces] if faces else []
-
-            # Store result in MongoDB (if available)
-            self.store_result(base_name, num_faces, confidence_scores, processing_time)
-
-            logger.info(
-                "Processed %s: %s faces, %.2fs", base_name, num_faces, processing_time
-            )
-            return output_path
-
+            # Find pending processing records
+            pending_records = self.processing_collection.find({"status": "pending"})
+            
+            for record in pending_records:
+                try:
+                    start_time = time.time()
+                    
+                    # Get the input file ID
+                    input_file_id = record.get("input_file_id")
+                    if not input_file_id:
+                        continue
+                        
+                    # Download the image from GridFS
+                    logger.info(f"Processing GridFS image with ID: {input_file_id}")
+                    grid_out = self.input_bucket.open_download_stream(input_file_id)
+                    image_data = grid_out.read()
+                    
+                    # Convert to OpenCV format
+                    nparr = np.frombuffer(image_data, np.uint8)
+                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if img is None:
+                        raise ValueError("Failed to decode image data")
+                    
+                    # Convert to RGB for MTCNN
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    
+                    # Check if we should use a custom redaction image for this request
+                    custom_redaction_image = None
+                    orig_redaction_image = self.redaction_image
+                    orig_redaction_method = self.redaction_method
+                    
+                    if record.get("has_custom_cover") and record.get("cover_image_id"):
+                        try:
+                            # Download the custom cover image
+                            cover_grid_out = self.input_bucket.open_download_stream(record["cover_image_id"])
+                            cover_data = cover_grid_out.read()
+                            
+                            # Convert to OpenCV format
+                            cover_nparr = np.frombuffer(cover_data, np.uint8)
+                            custom_redaction_image = cv2.imdecode(cover_nparr, cv2.IMREAD_UNCHANGED)
+                            
+                            if custom_redaction_image is not None:
+                                # Temporarily change the redaction settings
+                                self.redaction_image = custom_redaction_image
+                                self.redaction_method = "image"
+                                logger.info("Using custom redaction image for this request")
+                        except Exception as e:
+                            logger.error("Error loading custom redaction image: %s", str(e))
+                    
+                    # Detect faces
+                    faces = self.detect_faces(img_rgb)
+                    
+                    # Redact faces
+                    img_redacted, num_faces = self.redact_faces(img, faces)
+                    
+                    # Encode the image to bytes
+                    success, redacted_bytes = cv2.imencode(
+                        '.jpg' if record.get("filename", "").lower().endswith(('.jpg', '.jpeg')) else '.png', 
+                        img_redacted
+                    )
+                    
+                    if not success:
+                        raise ValueError("Failed to encode redacted image")
+                    
+                    # Upload to GridFS
+                    filename = record.get("filename", "unknown")
+                    output_filename = f"{os.path.splitext(filename)[0]}_redacted{os.path.splitext(filename)[1]}"
+                    
+                    output_file_id = self.output_bucket.upload_from_stream(
+                        output_filename, 
+                        io.BytesIO(redacted_bytes),
+                        metadata={
+                            "input_file_id": input_file_id,
+                            "num_faces": num_faces,
+                            "processing_time": time.time() - start_time
+                        }
+                    )
+                    
+                    # Calculate processing time
+                    processing_time = time.time() - start_time
+                    
+                    # Extract confidence scores
+                    confidence_scores = [face["confidence"] for face in faces] if faces else []
+                    
+                    # Update the processing record
+                    self.processing_collection.update_one(
+                        {"_id": record["_id"]},
+                        {"$set": {
+                            "status": "completed",
+                            "output_file_id": output_file_id,
+                            "num_faces": num_faces,
+                            "confidence_scores": confidence_scores,
+                            "processing_time": processing_time,
+                            "completed_at": time.time()
+                        }}
+                    )
+                    
+                    # Store result in face_detection_results collection too
+                    self.store_result(
+                        filename, 
+                        num_faces, 
+                        confidence_scores, 
+                        processing_time
+                    )
+                    
+                    logger.info(
+                        "Processed GridFS image %s: %s faces, %.2fs", 
+                        filename, num_faces, processing_time
+                    )
+                    
+                    # Restore original redaction settings if changed for this image
+                    if custom_redaction_image is not None:
+                        self.redaction_image = orig_redaction_image
+                        self.redaction_method = orig_redaction_method
+                        
+                except Exception as e:
+                    logger.error("Error processing GridFS image: %s", str(e))
+                    
+                    # Update processing record to show failure
+                    self.processing_collection.update_one(
+                        {"_id": record["_id"]},
+                        {"$set": {
+                            "status": "failed",
+                            "error": str(e),
+                            "completed_at": time.time()
+                        }}
+                    )
+                    
         except Exception as e:
-            logger.error("Error processing %s: %s", image_path, str(e))
-            return None
+            logger.error("Error in GridFS processing: %s", str(e))
 
     def run(self) -> None:
         """Run the face redaction client in continuous mode."""
         logger.info("Starting face redaction client")
 
         while True:
-            # Get all image files in input directory
-            image_files = []
-            for ext in [".jpg", ".jpeg", ".png"]:
-                image_files.extend(list(Path(INPUT_DIR).glob(f"*{ext}")))
-                image_files.extend(list(Path(INPUT_DIR).glob(f"*{ext.upper()}")))
-
-            # Process each image
-            for image_path in image_files:
-                if os.path.basename(image_path) != os.path.basename(REDACTION_IMAGE or ""):
-                    self.process_image(str(image_path))
-
+            # Process images from GridFS only
+            if self.mongo_available:
+                self.process_gridfs_images()
+            else:
+                logger.error("MongoDB not available, cannot process images")
+                time.sleep(60)  # Wait longer when there's a connection issue
+            
             # Wait before checking for new images
             time.sleep(POLL_INTERVAL)
 
 
 def main() -> None:
     """Main entry point for the face redaction client."""
-    client = FaceRedactionClient(MONGO_URI, MONGO_DBNAME, REDACTION_IMAGE)
-    client.run()
+    try:
+        client = FaceRedactionClient(MONGO_URI, MONGO_DBNAME, REDACTION_IMAGE)
+        client.run()
+    except Exception as e:
+        logger.critical("Fatal error initializing face redaction client: %s", str(e))
+        exit(1)
 
 
 if __name__ == "__main__":
