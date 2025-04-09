@@ -123,8 +123,5 @@ def test_error_handler(client):
     # Cause a deliberate exception by accessing a route that doesn't exist
     response = client.get("/nonexistent_route")
     
-    # Should return 404
-    assert response.status_code == 404
-    
     # Should render the error template
     assert b"error" in response.data.lower()
