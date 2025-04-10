@@ -37,7 +37,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@mongodb:27017")
 MONGO_DBNAME = os.getenv("MONGO_DBNAME", "okaycooldb")
 
 # Image processing configuration
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))  # seconds
+POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "0.5"))  # seconds
 
 # Redaction configuration
 REDACTION_IMAGE = os.getenv("REDACTION_IMAGE", None)  # Path to image used for redaction
@@ -148,6 +148,10 @@ class FaceRedactionClient:
         for face in faces:
             # Get the bounding box
             x, y, width, height = face["box"]
+
+            # Setting bounding box size to += 10%
+            width = int(width * 1.1)
+            height = int(height * 1.1)
 
             # Fix negative coordinates (sometimes MTCNN returns negative values)
             x = max(0, x)

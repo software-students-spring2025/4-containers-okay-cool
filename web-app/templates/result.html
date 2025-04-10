@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-5">
-    <div class="card">
-        <div class="card-header bg-primary text-white">
-            <h2>Face Redaction Results</h2>
+    <div class="card shadow-lg">
+        <div class="card-header bg-gray-200">
+            <h2 class="text-3xl font-semibold">Face Redaction Results</h2>
         </div>
         <div class="card-body">
             <div class="row">
@@ -11,18 +11,30 @@
                     <img src="{{ url_for('image_data', file_id=image_id) }}" class="img-fluid rounded" alt="Redacted image">
                 </div>
                 <div class="col-md-4">
+                    <!-- Analysis Results Card Box -->
                     <div class="card">
                         <div class="card-header">
-                            <h5>Analysis Results</h5>
+                            <h5 class="text-xl font-semibold">Analysis Results</h5>
                         </div>
                         <div class="card-body">
                             <p><strong>File:</strong> {{ filename }}</p>
-                            <p><strong>Faces Detected:</strong> {{ num_faces }}</p>
-                            <p><strong>Processing Time:</strong> {{ "%.2f"|format(processing_time) }} seconds</p>
+                            <p><strong>Visible Faces Detected: </strong> {{ num_faces }}</p>
+                            <p><strong>Image Processing Time:</strong> {{ "%.1f"|format(processing_time) }} seconds</p>
                         </div>
                     </div>
+
+                    <!-- Download Image Button -->
+                    <div class="mt-3">
+                        <a href="{{ url_for('image_data', file_id=image_id) }}" download="{{ filename }}" class="bg-green-500 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded shadow-md !important">
+                           Download Image
+                        </a>
+                    </div>
+
+                    <!-- Process Another Image Button -->
                     <div class="mt-4">
-                        <a href="{{ url_for('home') }}" class="btn btn-primary">Process Another Image</a>
+                        <a href="{{ url_for('home') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded shadow-md !important">
+                            Process Another Image
+                        </a>
                     </div>
                 </div>
             </div>
