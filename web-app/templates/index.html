@@ -19,13 +19,13 @@
     <!-- side-by-side webcam and captured photo -->
     <div class="flex gap-4">
       <!-- Webcam -->
-      <div class="flex-1 rounded-lg overflow-hidden border-4 border-gray-300 bg-gray-700">
+      <div class="flex-1 rounded-lg overflow-hidden bg-gray-500">
         <video id="videoElement" autoplay class="w-full aspect-video rounded-md"></video>
         <canvas id="canvasElement" style="display: none;"></canvas>
       </div>
 
-      <!-- captured Photo -->
-      <div class="flex-1 rounded-lg overflow-hidden border-4 border-gray-300">
+      <!-- captured photo -->
+      <div class="flex-1 rounded-lg overflow-hidden">
         <img id="photoElement"
              class="w-full aspect-video object-cover bg-black rounded-md"
              src=""
@@ -39,7 +39,9 @@
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Upload photo to block out</label>
         <div class="flex space-x-2">
-          <input id="faceImageInput" type="file" name="faceImage" accept="image/png, image/jpeg" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"/>
+          <div class="flex-1 overflow-hidden">
+            <input id="faceImageInput" type="file" name="faceImage" accept="image/png, image/jpeg" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 file:overflow-hidden file:text-ellipsis file:whitespace-nowrap"/>
+          </div>
           <span class="text-xl text-gray-500 font-medium relative top-1.5">or</span>
           <button id="captureButton"
                   type="button"
@@ -66,7 +68,7 @@
     </form>
 
     <!-- redacted image -->
-    <h2 class="text-lg font-semibold text-gray-800 mt-4">Redacted Image:</h2>
+    <h2 id="redactedImageTitle" style="display: none;" class="text-lg font-semibold text-gray-800 mt-4">Redacted Image:</h2>
     {% if image_path %}
     <img id="redactedImage" style="display: none;" class="rounded-lg border mt-2 shadow-md"/ src="{{img_path}}">
     {% endif %}
@@ -248,6 +250,7 @@
     }
 
     // Show processing status
+    document.getElementById('redactedImageTitle').style.display = 'block';
     document.getElementById('uploadStatus').innerHTML = 
       `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4">
          <p>Uploading your image...</p>
@@ -370,6 +373,12 @@
           if (data.status === 'completed') {
             // Processing finished - redirect to results page with the processing record ID
             console.log("Processing completed, redirecting to:", `/get_image/${data.file_id}`);
+            document.getElementById('uploadStatus').innerHTML = 
+              `<div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
+                 Processing your image... Status: ${data.status}.<br>
+                 If you are not automatically redirected, you can view your redacted photo 
+                 <a href="/get_image/${data.file_id}" class="underline text-gray-700 font-semibold">here</a>.
+               </div>`;
             window.location.href = `/get_image/${data.file_id}`;
           } else if (data.status === 'failed') {
             // Processing failed
