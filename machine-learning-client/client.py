@@ -37,7 +37,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@mongodb:27017")
 MONGO_DBNAME = os.getenv("MONGO_DBNAME", "okaycooldb")
 
 # Image processing configuration
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "0.5"))  # seconds
+POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "0.5"))  # seconds
 
 # Redaction configuration
 REDACTION_IMAGE = os.getenv("REDACTION_IMAGE", None)  # Path to image used for redaction
