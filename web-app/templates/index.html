@@ -52,11 +52,17 @@
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Optional: Cover your face with a custom image</label>
         <input type="file" name="coverImage" accept="image/png, image/jpeg"
-               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"/>
+               class="w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-lg focus:ring-2 focus:ring-indigo-500"/>
       </div>
 
-      <input type="submit" value="Redact Your Image" id="redactButton"
-             class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+      <div class="flex space-x-2">
+        <input type="submit" value="Redact Your Image" id="redactButton"
+               class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+        <button type="button" id="resetButton"
+                class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-red-500">
+          Reset
+        </button>
+      </div>
     </form>
 
     <!-- redacted image -->
@@ -80,11 +86,14 @@
   const photoElement = document.getElementById('photoElement');
   const captureButton = document.getElementById('captureButton');
   const redactButton = document.getElementById('redactButton');
+  const resetButton = document.getElementById('resetButton');
   const faceImageInput = document.getElementById('faceImageInput');
   const imageForm = document.getElementById('imageForm');
+  const uploadStatus = document.getElementById('uploadStatus');
 
   let capturedImageBlob = null;
   let isProcessing = false;
+  let currentFileId = null;
 
   // Function to start webcam
   function startWebcam() {
@@ -297,10 +306,56 @@
     });
   });
 
+  // Reset functionality
+  resetButton.addEventListener('click', function() {
+    // Cancel any ongoing processing
+    isProcessing = false;
+    currentFileId = null;
+    
+    // Clear the file input
+    faceImageInput.value = '';
+    
+    // Clear the coverImage input
+    const coverImageInput = imageForm.querySelector('input[name="coverImage"]');
+    if (coverImageInput) {
+      coverImageInput.value = '';
+    }
+    
+    // Reset the photo element
+    photoElement.src = '';
+    photoElement.style.display = 'block';
+    
+    // Clear captured image blob
+    capturedImageBlob = null;
+    
+    // Clear upload status
+    uploadStatus.innerHTML = '';
+    
+    // Re-enable the redact button
+    redactButton.disabled = false;
+    redactButton.classList.remove('opacity-50', 'cursor-not-allowed');
+    
+    // Restart webcam if not running
+    if (!stream) {
+      startWebcam().catch(err => {
+        console.error("Failed to restart webcam:", err);
+      });
+    }
+    
+    console.log("App state has been reset");
+  });
+
   function pollForStatus(fileId) {
     console.log("Starting to poll status for fileId:", fileId);
+    currentFileId = fileId;
     
     const checkStatus = () => {
+      // If reset was clicked, stop polling
+      if (!isProcessing || currentFileId !== fileId) {
+        console.log("Polling stopped due to reset or changed file ID");
+        return;
+      }
+      
       console.log("Checking status for fileId:", fileId);
       fetch(`/check_status/${fileId}`)
         .then(response => {
@@ -345,8 +400,10 @@
             `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
                Error checking status: ${error.message}
              </div>`;
-          // Try again after a delay
-          setTimeout(checkStatus, 2000);
+          // Try again after a delay if we're still processing
+          if (isProcessing && currentFileId === fileId) {
+            setTimeout(checkStatus, 2000);
+          }
         });
     };
     
